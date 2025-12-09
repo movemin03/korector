@@ -1,89 +1,62 @@
-name: Korector API Health Monitor
+name: Korector Health Check
 
 on:
   schedule:
-    # 매일 한국시간 오전 9시, 오후 3시, 오후 9시 (UTC 기준 0시, 6시, 12시)
-    - cron: '0 0,6,12 * * *'
-  workflow_dispatch:  # 수동 실행 가능
-  push:
-    branches: [ main ]
-    paths:
-      - 'korector.py'
-      - '.github/workflows/korector-health-monitor.yml'
+    - cron: '0 0 * * *'  # 매일 자정
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
-  korector-health-check:
+  health-check:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout Korector repository
+    - name: Checkout
       uses: actions/checkout@v4
     
-    - name: Set up Python for Korector
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
-    - name: Install Korector dependencies
+    - name: Install Korector
       run: |
-        pip install requests
+        pip install korector
     
-    - name: Run Korector health check
-      id: korector_health
+    - name: Run Health Check
+      id: health_check
       run: |
-        python korector.py --health-check > korector_health_result.json
-        cat korector_health_result.json
+        python -c "
+        from korector import NaverSpellChecker
+        import json
         
-        # Korector API 상태 확인
-        if grep -q '"status": "ok"' korector_health_result.json; then
-          echo "status=success" >> $GITHUB_OUTPUT
-          echo "✅ Korector API is healthy"
-        else
-          echo "status=failure" >> $GITHUB_OUTPUT
-          echo "❌ Korector API is down"
-          exit 1
-        fi
+        checker = NaverSpellChecker()
+        result = checker.health_check()
+        
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        
+        # GitHub Actions 출력
+        if result['status'] != 'ok':
+            exit(1)
+        " || echo "HEALTH_CHECK_FAILED=true" >> $GITHUB_ENV
     
-    - name: Upload Korector health check result
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: korector-health-check-${{ github.run_number }}
-        path: korector_health_result.json
-        retention-days: 30
-    
-    - name: Create Issue on Korector API Failure
-      if: failure()
+    - name: Create Issue on Failure
+      if: env.HEALTH_CHECK_FAILED == 'true'
       uses: actions/github-script@v7
       with:
         script: |
-          const fs = require('fs');
-          const healthResult = fs.readFileSync('korector_health_result.json', 'utf8');
-          
           github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             title: '🚨 Korector API Health Check Failed',
-            body: `### Korector API Health Check Failed\n\n**Time:** ${new Date().toISOString()}\n\n**Result:**\n\`\`\`json\n${healthResult}\n\`\`\`\n\n**Action:** Check Naver API status and Korector passportKey extraction logic.`,
+            body: `### Korector API Health Check Failed
+            
+            **Time:** ${new Date().toISOString()}
+            
+            **Action:** Check Naver API status and passportKey extraction logic.
+            `,
             labels: ['bug', 'korector-api', 'health-check']
-          });
-    
-    - name: Summary for Korector health check
-      if: always()
-      run: |
-        if [ "${{ steps.korector_health.outputs.status }}" == "success" ]; then
-          echo "### ✅ Korector API Health Check Passed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Korector API is functioning normally at $(date)" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "### ❌ Korector API Health Check Failed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Korector API health check failed at $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "Check the artifacts for detailed error information" >> $GITHUB_STEP_SUMMARY
-        fi
-    
-    - name: Slack Notification (Optional)
-      if: failure()
-      run: |
-        echo "You can add Slack/Discord notification here"
-        echo "Example: Use slackapi/slack-github-action or webhook"
+          })
