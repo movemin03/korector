@@ -1,5 +1,5 @@
 """
-Korector - Modern Korean Spell Checker v1.0.6
+Korector - Modern Korean Spell Checker v1.0.6.1
 Platform-aware UA with ua-parser (no fake-useragent dependency)
 """
 
@@ -22,7 +22,7 @@ try:
 except ImportError:
     UA_PARSER_AVAILABLE = False
 
-__version__ = "1.0.6"
+__version__ = "1.0.6.1"
 __author__ = "ovin"
 
 # 플랫폼별 최신 User-Agent 풀 (2025년 기준)
