@@ -22,12 +22,12 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install development dependencies
+    - name: Install build tools
       run: |
         pip install --upgrade pip
         pip install build setuptools wheel
     
-    - name: Build & Install Korector (local)
+    - name: Build & Install Korector
       run: |
         python -m build
         pip install .
@@ -41,8 +41,12 @@ jobs:
         import sys
         
         print('=== Korector Health Check ===')
-        print(f'Version: {__import__(\"korector\").__version__}')
-        print(f'Commit: ${{ github.sha }}')
+        try:
+            import korector
+            print(f'Version: {korector.__version__}')
+        except:
+            print('Version: unknown')
+        print(f'Commit: $GITHUB_SHA')
         print('==============================')
         
         checker = NaverSpellChecker(verbose=False)
@@ -62,33 +66,43 @@ jobs:
       if: always()
       run: |
         echo "Health check completed at $(date -u)"
-        echo "Korector version: $(python -c 'import korector; print(korector.__version__)')"
+        echo "Git commit: $GITHUB_SHA"
+        echo "Workflow: ${{ github.workflow }}"
     
     - name: Create Issue on Failure
       if: env.HEALTH_CHECK_FAILED == 'true'
       uses: actions/github-script@v7
       with:
         script: |
-          github.rest.issues.create({
+          const now = new Date().toISOString();
+          const repo = process.env.GITHUB_REPOSITORY;
+          const sha = process.env.GITHUB_SHA;
+          
+          await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             title: '🚨 Korector Health Check Failed',
             body: `### 🚨 Korector API Health Check Failed
 
-**⏰ Time:** ${{ github.event.head_commit.timestamp || github.run_id }}
-**🔢 Commit:** ${{ github.sha }}
+**⏰ Time:** ${now}
+**🔢 Commit:** ${sha}
+**📂 Repository:** ${repo}
 **🐳 Runner:** ubuntu-latest
 **🐍 Python:** 3.11
 
-#### Reproduction Steps
-1. \`git clone https://github.com/${{ github.repository }}.git\`
-2. \`git checkout ${{ github.sha }}\`
-3. \`pip install -e .\`
-4. \`python -c \"from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())\"\`
+#### Reproduction
+\`\`\`bash
+git clone https://github.com/${repo}.git
+git checkout ${sha}
+pip install -e .
+python -c "from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())"
+\`\`\`
 
-#### Action Required ⚠️
-- [ ] Check Naver API: https://search.naver.com/search.naver?query=네이버+맞춤법+검사기
-- [ ] Verify \`korector._refresh_passport_key()\`
-- [ ] Test: \`pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}\``,
+#### Action Required
+- [ ] Naver API 확인
+- [ ] passportKey 로직 점검
+- [ ] \`pip install git+https://github.com/${repo}.git@${sha}\``,
             labels: ['bug', 'korector-api', 'health-check']
-          })
+          });
+          
+          console.log(`✅ Issue created: https://github.com/${repo}/issues`);
