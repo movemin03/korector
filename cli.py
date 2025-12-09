@@ -1,114 +1,103 @@
-#!/usr/bin/env python3
-"""
-Korector CLI - Command Line Interface v1.0.6
-No external dependencies - Pure Python
-"""
+name: Korector Health Monitor
 
-import argparse
-import json
-import sys
-from korector import NaverSpellChecker
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
-def main():
-    if sys.platform == 'win32':
-        try:
-            sys.stdout.reconfigure(encoding='utf-8')
-            sys.stderr.reconfigure(encoding='utf-8')
-        except:
-            pass
+permissions:
+  contents: read
+  issues: write
 
-    parser = argparse.ArgumentParser(
-        description='Korector: Korean Spell Checker v1.0.6 (Platform-aware UA)',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-예제:
-  korector "안녕 하세요"
-  korector --health-check  
-  korector -f input.txt -o output.txt
-  korector "마시면서배우는 수울게임" --verbose
-        """
-    )
+jobs:
+  # 🖥️ Windows 테스트 (정확한 헤더 적용)
+  windows-test:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+    
+    - name: 🧹 Clean & Build (Windows)
+      shell: powershell
+      run: |
+        pip install --upgrade pip build setuptools wheel
+        if (Test-Path "dist") { Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue }
+        if (Test-Path "build") { Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue }
+        Get-ChildItem -Filter "*.egg-info" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        try { pip uninstall korector -y } catch {}
+        python -m build
+        pip install .
+        pip show korector
 
-    parser.add_argument('text', nargs='?', help='검사할 텍스트')
-    parser.add_argument('-f', '--file', help='입력 파일 경로')
-    parser.add_argument('-o', '--output', help='출력 파일 경로')
-    parser.add_argument('--health-check', action='store_true', help='API 상태 확인')
-    parser.add_argument('-v', '--verbose', action='store_true', help='상세 출력')
-    parser.add_argument('--version', action='version', version=f'Korector {__import__("korector").__version__}')
+    - name: 🔍 Windows Naver Debug (정확한 헤더)
+      shell: powershell
+      run: |
+        python - << 'EOF'
+        import requests
+        import re
+        
+        print("🖥️ Windows - 네이버 요청 (로컬 성공 헤더 재현)")
+        print("=" * 70)
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Accept-Language': 'ko,en-US;q=0.9,en;q=0.8',
+            'Cache-Control': 'max-age=0',
+            'Sec-Ch-Ua': '"Microsoft Edge";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+            'Sec-Ch-Ua-Arch': '"x86"',
+            'Sec-Ch-Ua-Bitness': '"64"',
+            'Sec-Ch-Ua-Full-Version-List': '"Microsoft Edge";v="143.0.3650.66", "Chromium";v="143.0.7499.41", "Not A(Brand";v="24.0.0.0"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Model': '""',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Ch-Ua-Platform-Version': '"19.0.0"',
+            'Sec-Ch-Ua-WoW64': '?0',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1',
+            'Referer': 'https://www.naver.com/',
+        }
+        
+        session = requests.Session()
+        session.headers.update(headers)
+        
+        # 🔑 로컬 성공 URL 사용
+        url = 'https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=%EB%84%A4%EC%9D%B4%EB%B2%84+%EB%A7%9E%EC%B6%A4%EB%B2%95+%EA%B2%80%EC%82%AC%EA%B8%B0&ackey=b3lkpta1'
+        resp = session.get(url, timeout=15)
+        
+        print(f"✅ Status: {resp.status_code}")
+        print(f"📏 Length: {len(resp.text):,} bytes")
+        
+        # passportKey 검색
+        patterns = [
+            r'passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
+            r'([a-f0-9]{40})\s*["\']?\s*(?:SpellerProxy|checker)',
+            r'SpellerProxy[^>]*passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
+        ]
+        
+        for i, pattern in enumerate(patterns, 1):
+            matches = re.findall(pattern, resp.text, re.IGNORECASE)
+            if matches:
+                print(f"✅ 패턴{i}: {matches[0][:16]}...")
+                break
+        
+        EOF
 
-    args = parser.parse_args()
+    - name: 🖥️ Windows korector --health-check
+      shell: powershell
+      run: |
+        Write-Output "🖥️ Windows Platform Test (1.0.6)"
+        python -c "from korector import NaverSpellChecker; c=NaverSpellChecker(verbose=True); print('Python:', c.health_check())"
+        korector --health-check --verbose
+        Write-Output "✅ Windows Test Complete"
 
-    checker = NaverSpellChecker(verbose=args.verbose)
-
-    if args.health_check:
-        result = checker.health_check()
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        sys.exit(0 if result['status'] == 'ok' else 1)
-
-    if args.file:
-        try:
-            try:
-                with open(args.file, 'r', encoding='utf-8') as f:
-                    text = f.read()
-            except UnicodeDecodeError:
-                with open(args.file, 'r', encoding='cp949') as f:
-                    text = f.read()
-        except Exception as e:
-            print(f"파일 읽기 오류: {e}", file=sys.stderr)
-            sys.exit(1)
-    elif args.text:
-        text = args.text
-    else:
-        parser.print_help()
-        sys.exit(0)
-
-    def progress_callback(current: int, total: int):
-        print(f"[{current}/{total}] 처리 중...")
-
-    result = checker.check(text, progress_callback=progress_callback if args.verbose else None)
-
-    if not result['success']:
-        print(f"오류: {result.get('error', 'Unknown error')}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"\n처리 시간: {result['time']:.3f}초")
-    if 'total_errors' in result:
-        print(f"전체 오류: {result['total_errors']}")
-        print(f"처리 청크: {result['total_chunks']}")
-    else:
-        print(f"오류 개수: {result['error_count']}")
-    print(f"변경 여부: {'있음' if result['has_error'] else '없음'}")
-
-    if args.verbose:
-        print(f"\n{'=' * 60}")
-        print("원본:")
-        print('=' * 60)
-        print(result['original'][:1000] + "..." if len(result['original']) > 1000 else result['original'])
-        print(f"\n{'=' * 60}")
-        print("교정:")
-        print('=' * 60)
-        print(result['corrected'][:1000] + "..." if len(result['corrected']) > 1000 else result['corrected'])
-        if result.get('html'):
-            print(f"\n{'=' * 60}")
-            print("HTML (오류 표시):")
-            print('=' * 60)
-            print(result['html'][:1000] + "..." if len(result['html']) > 1000 else result['html'])
-
-    if args.output:
-        try:
-            with open(args.output, 'w', encoding='utf-8') as f:
-                f.write(result['corrected'])
-            print(f"\n저장 완료: {args.output}")
-        except Exception as e:
-            print(f"파일 저장 오류: {e}", file=sys.stderr)
-            sys.exit(1)
-    elif not args.verbose:
-        print(f"\n{'=' * 60}")
-        print("결과:")
-        print('=' * 60)
-        print(result['corrected'])
-
-    sys.exit(0)
-
-if __name__ == "__main__":
-    main()
+  # 🐧 Linux 테스트 (Ubuntu)
+  linux-test
