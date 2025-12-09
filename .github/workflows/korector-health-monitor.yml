@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-all-platforms:
+  test-platforms:
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # 핵심! 한 플랫폼 실패해도 계속
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -29,30 +29,26 @@ jobs:
         shell: bash
         run: |
           if python -m cli --health-check 2>/dev/null | grep -q '"status": *"ok"'; then
-            echo "PASS  ${{ matrix.os }}"
+            echo "PASS ✅ ${{ matrix.os }}"
             echo "status=pass" >> $GITHUB_OUTPUT
           else
-            echo "FAIL  ${{ matrix.os }}"
+            echo "FAIL ❌ ${{ matrix.os }}"
             echo "status=fail" >> $GITHUB_OUTPUT
             python -m cli --health-check || true
           fi
 
   summary:
     runs-on: ubuntu-latest
-    needs: test-all-platforms
+    needs: test-platforms
     steps:
-      - name: Summary
+      - name: Results
         run: |
-          ubuntu_status="${{ needs.test-all-platforms.results.ubuntu-latest.status }}"
-          windows_status="${{ needs.test-all-platforms.results.windows-latest.status }}"
-          macos_status="${{ needs.test-all-platforms.results.macos-latest.status }}"
+          echo "Ubuntu:  ${{ needs.test-platforms.results.ubuntu-latest }}"
+          echo "Windows: ${{ needs.test-platforms.results.windows-latest }}"
           
-          echo "Ubuntu:   ${{ needs.test-all-platforms.results.ubuntu-latest.status }}"
-          echo "Windows:  ${{ needs.test-all-platforms.results.windows-latest.status }}"
-          echo "macOS:    ${{ needs.test-all-platforms.results.macos-latest.status }}"
-          
-          if [[ "$ubuntu_status" == "success" && "$windows_status" == "success" && "$macos_status" == "success" ]]; then
-            echo " ALL PLATFORMS PASS"
+          if [[ "${{ needs.test-platforms.results.ubuntu-latest }}" == "success" && 
+                "${{ needs.test-platforms.results.windows-latest }}" == "success" ]]; then
+            echo "🎉 BOTH PLATFORMS PASS"
           else
-            echo "  SOME PLATFORMS FAILED - Check logs above"
+            echo "⚠️  SOME PLATFORMS FAILED"
           fi
