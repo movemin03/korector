@@ -382,7 +382,3 @@ limitations under the License.
 ## 📞 문의
 
 - GitHub Issues: https://github.com/movemin03/korector/issues
-
-[1](https://img.shields.io/badge/python-3.7+-blue.svg)
-[2](https://www.python.org/downloads/)
-[3](https://img.shields.io/badge/license-MIT-green.svg)
