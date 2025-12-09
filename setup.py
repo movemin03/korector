@@ -11,7 +11,7 @@ def read_readme():
 
 setup(
     name='korector',
-    version='1.0.1',
+    version='1.0.2',
     author='movemin',
     author_email='your.email@example.com',
     description='A modern Python library for Korean spell checking powered by Naver',
