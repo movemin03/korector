@@ -46,7 +46,7 @@ jobs:
             print(f'Version: {korector.__version__}')
         except:
             print('Version: unknown')
-        print(f'Commit: $GITHUB_SHA')
+        print('Commit: $GITHUB_SHA')
         print('==============================')
         
         checker = NaverSpellChecker(verbose=False)
@@ -67,7 +67,6 @@ jobs:
       run: |
         echo "Health check completed at $(date -u)"
         echo "Git commit: $GITHUB_SHA"
-        echo "Workflow: ${{ github.workflow }}"
     
     - name: Create Issue on Failure
       if: env.HEALTH_CHECK_FAILED == 'true'
@@ -75,34 +74,32 @@ jobs:
       with:
         script: |
           const now = new Date().toISOString();
-          const repo = process.env.GITHUB_REPOSITORY;
-          const sha = process.env.GITHUB_SHA;
+          const owner = '${{ github.repository_owner }}';
+          const repo = '${{ github.event.repository.name }}';
+          const sha = '${{ github.sha }}';
           
           await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
+            owner: owner,
+            repo: repo,
             title: '🚨 Korector Health Check Failed',
-            body: `### 🚨 Korector API Health Check Failed
-
-**⏰ Time:** ${now}
-**🔢 Commit:** ${sha}
-**📂 Repository:** ${repo}
-**🐳 Runner:** ubuntu-latest
-**🐍 Python:** 3.11
-
-#### Reproduction
-\`\`\`bash
-git clone https://github.com/${repo}.git
-git checkout ${sha}
-pip install -e .
-python -c "from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())"
-\`\`\`
-
-#### Action Required
-- [ ] Naver API 확인
-- [ ] passportKey 로직 점검
-- [ ] \`pip install git+https://github.com/${repo}.git@${sha}\``,
+            body: '### 🚨 Korector API Health Check Failed\n\n' +
+                  '**⏰ Time:** ' + now + '\n' +
+                  '**🔢 Commit:** ' + sha + '\n' +
+                  '**📂 Repository:** ' + owner + '/' + repo + '\n' +
+                  '**🐳 Runner:** ubuntu-latest\n' +
+                  '**🐍 Python:** 3.11\n\n' +
+                  '#### Reproduction\n' +
+                  '```
+                  'git clone https://github.com/' + owner + '/' + repo + '.git\n' +
+                  'git checkout ' + sha + '\n' +
+                  'pip install -e .\n' +
+                  'python -c "from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())"\n' +
+                  '```\n\n' +
+                  '#### Action Required\n' +
+                  '- [ ] Check Naver API status\n' +
+                  '- [ ] Verify korector._refresh_passport_key()\n' +
+                  '- [ ] Test: pip install git+https://github.com/' + owner + '/' + repo + '.git@' + sha,
             labels: ['bug', 'korector-api', 'health-check']
           });
           
-          console.log(`✅ Issue created: https://github.com/${repo}/issues`);
+          console.log('✅ Issue created!');
