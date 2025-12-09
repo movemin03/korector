@@ -1,251 +1,58 @@
-name: Korector Health Monitor
-
+name: Health Check
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 자정 (UTC 기준)
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  issues: write
+    - cron: '0 1 * * *'  # 매일 UTC 01:00 (KST 10:00)
+  workflow_dispatch:  # 수동 실행 가능
 
 jobs:
-  # 🔄 Windows 테스트 (로컬 성공 헤더 적용)
-  windows-test:
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
-    - name: 🧹 Clean & Build (Windows)
-      shell: powershell
-      run: |
-        pip install --upgrade pip build setuptools wheel
-        if (Test-Path "dist") { Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue }
-        if (Test-Path "build") { Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue }
-        Get-ChildItem -Filter "*.egg-info" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        try { pip uninstall korector -y } catch { }
-        python -m build
-        pip install .
-        pip show korector
-
-    - name: 🔍 Windows Naver Debug (로컬 성공 헤더)
-      shell: powershell
-      run: |
-        python - << 'EOF'
-        import requests
-        import re
-        print("🔍 Windows 로컬 성공 헤더로 네이버 디버깅")
-        print("=" * 80)
-        
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Accept-Language': 'ko,en-US;q=0.9,en;q=0.8',
-            'Cache-Control': 'max-age=0',
-            'Sec-Ch-Ua': '"Microsoft Edge";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-            'Sec-Ch-Ua-Arch': '"x86"',
-            'Sec-Ch-Ua-Bitness': '"64"',
-            'Sec-Ch-Ua-Full-Version-List': '"Microsoft Edge";v="143.0.3650.66", "Chromium";v="143.0.7499.41", "Not A(Brand";v="24.0.0.0"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Model': '""',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-            'Sec-Ch-Ua-Platform-Version': '"19.0.0"',
-            'Sec-Ch-Ua-WoW64': '?0',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-User': '?1',
-            'Upgrade-Insecure-Requests': '1',
-            'Referer': 'https://www.naver.com/',
-            'DNT': '1',
-            'Priority': 'u=0, i',
-        })
-        
-        # 🔑 로컬 성공 URL 정확 복사
-        url = 'https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=%EB%84%A4%EC%9D%B4%EB%B2%84+%EB%A7%9E%EC%B6%A4%EB%B2%95+%EA%B2%80%EC%82%AC%EA%B8%B0&ackey=b3lkpta1'
-        resp = session.get(url, timeout=15)
-        
-        print(f"✅ Status: {resp.status_code}")
-        print(f"📏 Length: {len(resp.text):,} bytes")
-        
-        # 패턴 분석
-        patterns = [
-            r'passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
-            r'([a-f0-9]{40})\s*["\']?\s*SpellerProxy',
-            r'checker[^"]*passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
-        ]
-        
-        for i, pattern in enumerate(patterns, 1):
-            matches = re.findall(pattern, resp.text, re.IGNORECASE)
-            if matches:
-                print(f"✅ 패턴 {i}: {matches[0][:16]}...")
-        
-        all_hex = re.findall(r'[a-f0-9]{40}', resp.text)
-        print(f"🔢 40자 hex: {len(all_hex)}개")
-        EOF
-
-    - name: 🖥️ Windows korector --health-check
-      shell: powershell
-      run: |
-        Write-Output "🖥️ Windows Platform Test (로컬 헤더)"
-        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Windows Python:', checker.health_check())"
-        korector --health-check --verbose
-        Write-Output "✅ Windows Test Complete"
-
-  # 🔄 Linux 테스트
-  linux-test:
+  health-check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
-    - name: 🧹 Clean & Build (Linux)
-      run: |
-        pip install --upgrade pip build setuptools wheel
-        rm -rf dist/ build/ *.egg-info/ 2>/dev/null || true
-        pip uninstall korector -y 2>/dev/null || true
-        python -m build
-        pip install .
-        pip show korector
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🔍 Linux Naver Debug
-      run: |
-        python - << 'EOF'
-        import requests
-        import re
-        print("🔍 Linux Ubuntu 헤더로 네이버 디버깅")
-        print("=" * 80)
-        
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ko,en-US;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-        })
-        
-        url = 'https://search.naver.com/search.naver?where=nexearch&query=네이버+맞춤법+검사기'
-        resp = session.get(url, timeout=15)
-        
-        print(f"✅ Status: {resp.status_code}")
-        print(f"📏 Length: {len(resp.text):,} bytes")
-        
-        patterns = [
-            r'passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
-            r'([a-f0-9]{40})\s*["\']?\s*SpellerProxy',
-        ]
-        
-        for i, pattern in enumerate(patterns, 1):
-            matches = re.findall(pattern, resp.text, re.IGNORECASE)
-            if matches:
-                print(f"✅ 패턴 {i}: {matches[0][:16]}...")
-        
-        all_hex = re.findall(r'[a-f0-9]{40}', resp.text)
-        print(f"🔢 40자 hex: {len(all_hex)}개")
-        EOF
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-    - name: 🐧 Linux korector --health-check
-      run: |
-        echo "🐧 Linux Platform Test"
-        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Linux Python:', checker.health_check())"
-        korector --health-check --verbose
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
 
-  # 🔄 macOS 테스트
-  macos-test:
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
-    - name: 🧹 Clean & Build (macOS)
-      run: |
-        pip install --upgrade pip build setuptools wheel
-        rm -rf dist/ build/ *.egg-info/ 2>/dev/null || true
-        pip uninstall korector -y 2>/dev/null || true
-        python -m build
-        pip install .
-        pip show korector
+      - name: Run health check
+        id: health
+        run: |
+          result=$(korector --health-check)
+          echo "$result"
+          
+          # JSON 파싱하여 상태 확인
+          status=$(echo "$result" | jq -r '.status // empty')
+          if [ "$status" = "ok" ]; then
+            echo "health_status=success" >> $GITHUB_OUTPUT
+            echo "Health check passed ✅" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "health_status=failure" >> $GITHUB_OUTPUT
+            echo "Health check failed ❌" >> $GITHUB_STEP_SUMMARY
+            echo "Status: $status" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # 전체 결과 저장
+          echo "$result" > health-check-result.json
+        continue-on-error: true
 
-    - name: 🍎 macOS korector --health-check
-      run: |
-        echo "🍎 macOS Platform Test"
-        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('macOS Python:', checker.health_check())"
-        korector --health-check --verbose
+      - name: Upload health check result
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: health-check-result
+          path: health-check-result.json
 
-  # 📊 종합 결과 리포트
-  report:
-    needs: [windows-test, linux-test, macos-test]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-    - name: 📊 Multi-Platform Test Report
-      run: |
-        echo "=== KORECTOR MULTI-PLATFORM RESULTS ==="
-        echo "🖥️  WINDOWS:  ${{ needs.windows-test.result }}"
-        echo "🐧  LINUX:    ${{ needs.linux-test.result }}"
-        echo "🍎  macOS:    ${{ needs.macos-test.result }}"
-        echo ""
-        echo "✅ ALL PASS = 녹색 불!"
-        echo "❌ ANY FAIL = 자동 Issue 생성"
-
-    - name: 🚨 Create Issue if ANY platform fails
-      if: |
-        needs.windows-test.result == 'failure' ||
-        needs.linux-test.result == 'failure' ||
-        needs.macos-test.result == 'failure'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const failedPlatforms = [];
-          if ('${{ needs.windows-test.result }}' !== 'success') failedPlatforms.push('Windows');
-          if ('${{ needs.linux-test.result }}' !== 'success') failedPlatforms.push('Linux');
-          if ('${{ needs.macos-test.result }}' !== 'success') failedPlatforms.push('macOS');
-
-          const now = new Date().toISOString();
-          const title = '🚨 Korector Health Check Failed: ' + failedPlatforms.join(', ');
-          const body = '### Korector Multi-Platform Health Check Failed\n\n' +
-                      '**Time:** ' + now + '\n\n' +
-                      '**Failed Platforms:**\n' +
-                      failedPlatforms.join('\n') + '\n\n' +
-                      '**Detailed Logs:**\n' +
-                      '- [Windows](' + '${{ needs.windows-test.result_url }}' + ')\n' +
-                      '- [Linux](' + '${{ needs.linux-test.result_url }}' + ')\n' +
-                      '- [macOS](' + '${{ needs.macos-test.result_url }}' + ')\n\n' +
-                      '**Test Commands:**\n' +
-                      '```
-                      'python -c "from korector import NaverSpellChecker(verbose=True); print(NaverSpellChecker(verbose=True).health_check())"\n' +
-                      'korector --health-check --verbose\n' +
-                      '```\n\n' +
-                      '**Windows Special:**\n' +
-                      '- 로컬 성공 헤더 (Chrome/143 + Edge)\n' +
-                      '- 별도 Naver Debug 스텝 포함';
-
-          await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title: title,
-            body: body,
-            labels: ['bug', 'korector-api', 'health-check', 'multi-platform']
-          });
+      - name: Notify on failure
+        if: steps.health.outputs.health_status == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
