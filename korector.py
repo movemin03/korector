@@ -9,11 +9,11 @@ import re
 import time
 import sys
 from collections import Counter
-from typing import Dict, Optional, Callable, Tuple
+from typing import Dict, Optional, Callable, Tuple, List
 from functools import lru_cache
 import concurrent.futures
 
-__version__ = "1.0.2"
+__version__ = "1.0.4"
 __author__ = "movemin"
 
 
@@ -87,6 +87,75 @@ class NaverSpellChecker:
 
         except Exception:
             return False
+
+    def _split_into_chunks(self, text: str, max_size: int = 450) -> List[str]:
+        """
+        텍스트를 문장 단위로 똑똑하게 분할
+
+        Args:
+            text: 분할할 텍스트
+            max_size: 최대 청크 크기
+
+        Returns:
+            분할된 청크 리스트
+        """
+        # 문장 종결 기호로 분할 (., !, ?, \n 등)
+        sentence_endings = r'[.!?\n]'
+        sentences = re.split(f'({sentence_endings})', text)
+
+        # 종결 기호를 문장에 다시 붙이기
+        full_sentences = []
+        for i in range(0, len(sentences) - 1, 2):
+            if i + 1 < len(sentences):
+                full_sentences.append(sentences[i] + sentences[i + 1])
+            else:
+                full_sentences.append(sentences[i])
+
+        # 마지막 문장이 종결 기호 없이 끝난 경우
+        if len(sentences) % 2 == 1 and sentences[-1]:
+            full_sentences.append(sentences[-1])
+
+        # 청킹
+        chunks = []
+        current_chunk = ""
+
+        for sentence in full_sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+
+            # 현재 청크에 추가했을 때 크기
+            potential_size = len(current_chunk) + len(sentence)
+
+            # 한 문장이 max_size를 넘는 경우 - 강제로 잘라야 함
+            if len(sentence) > max_size:
+                # 현재 청크가 있으면 먼저 저장
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = ""
+
+                # 긴 문장을 강제로 분할
+                for i in range(0, len(sentence), max_size):
+                    chunks.append(sentence[i:i + max_size])
+                continue
+
+            # max_size를 넘으면 현재 청크 저장하고 새로 시작
+            if potential_size > max_size:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence
+            else:
+                # 청크에 추가 (공백으로 구분)
+                if current_chunk:
+                    current_chunk += " " + sentence
+                else:
+                    current_chunk = sentence
+
+        # 마지막 청크 저장
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
 
     def check(self, text: str, retry: bool = True, auto_split: bool = True) -> Dict:
         """
@@ -221,38 +290,42 @@ class NaverSpellChecker:
             }
 
     def _check_parallel(self, text: str, chunk_size: int = 450, max_workers: int = 3) -> Dict:
-        """긴 텍스트를 병렬 처리"""
+        """긴 텍스트를 병렬 처리 (문장 단위로 똑똑하게 분할)"""
         start_time = time.time()
 
-        # 1. 텍스트를 청크로 나누고 순서 번호 부여
-        chunks = []
-        for i in range(0, len(text), chunk_size):
-            chunk = text[i:i + chunk_size]
-            chunks.append((i // chunk_size, chunk))
+        # 1. 텍스트를 문장 단위로 똑똑하게 분할
+        chunks = self._split_into_chunks(text, chunk_size)
 
         print(f"총 {len(chunks)}개 청크로 분할하여 병렬 처리 시작...")
 
-        # 2. 청크 처리 함수
+        # 청크 정보 출력 (디버깅용)
+        for i, chunk in enumerate(chunks):
+            print(f"  청크 {i+1}: {len(chunk)}자 (미리보기: {chunk[:50]}...)")
+
+        # 2. 청크에 순서 번호 부여
+        indexed_chunks = [(i, chunk) for i, chunk in enumerate(chunks)]
+
+        # 3. 청크 처리 함수
         def process_chunk(item: Tuple[int, str]) -> Tuple[int, dict]:
             index, chunk = item
             result = self._check_single(chunk)
             if result['success']:
-                print(f"  ✓ 청크 {index + 1}/{len(chunks)} 완료 ({result['time']:.2f}초)")
+                print(f"  ✓ 청크 {index + 1}/{len(chunks)} 완료 ({result['time']:.2f}초, {len(chunk)}자)")
             else:
                 print(f"  ✗ 청크 {index + 1}/{len(chunks)} 실패")
             return (index, result)
 
-        # 3. 병렬 실행
+        # 4. 병렬 실행
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
+            futures = [executor.submit(process_chunk, chunk) for chunk in indexed_chunks]
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
 
-        # 4. 순서대로 정렬
+        # 5. 순서대로 정렬
         results.sort(key=lambda x: x[0])
 
-        # 5. 결과 합치기
+        # 6. 결과 합치기
         corrected_parts = []
         html_parts = []
         origin_html_parts = []
@@ -271,14 +344,15 @@ class NaverSpellChecker:
                 origin_html_parts.append(result['original'])
                 failed_chunks += 1
 
-        corrected_text = ''.join(corrected_parts)
+        # 공백으로 청크 연결 (문장 단위로 나눴으므로)
+        corrected_text = ' '.join(corrected_parts)
 
         return {
             'success': failed_chunks < len(chunks),
             'original': text,
             'corrected': corrected_text,
-            'html': ''.join(html_parts),
-            'origin_html': ''.join(origin_html_parts),
+            'html': ' '.join(html_parts),
+            'origin_html': ' '.join(origin_html_parts),
             'total_errors': total_errors,
             'has_error': (text != corrected_text),
             'total_chunks': len(chunks),
