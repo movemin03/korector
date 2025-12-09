@@ -127,13 +127,7 @@ jobs:
         python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Linux Python:', checker.health_check())"
         korector --health-check --verbose
 
-  # 🔄 macOS 테스트
-  macos-test:
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-        - name: Set up Python
+      - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.13'
@@ -166,47 +160,54 @@ jobs:
         echo "🐧  LINUX:    ${{ needs.linux-test.result }}"
         echo "🍎  macOS:    ${{ needs.macos-test.result }}"
         echo ""
-        echo "✅ ALL PASS = 녹색 불!"
-        echo "❌ ANY FAIL = 자동 Issue 생성"
+        echo "🔍 Windows: 로컬 성공 헤더 사용 (Chrome 143 + Edge)"
+        echo "📋 Check Windows '🔍 Naver Debug' step for passportKey"
 
     - name: 🚨 Create Issue if ANY platform fails
       if: |
-        needs.windows-test.result == 'failure' ||
-        needs.linux-test.result == 'failure' ||
-        needs.macos-test.result == 'failure'
+        needs.windows-test.result != 'success' ||
+        needs.linux-test.result != 'success' ||
+        needs.macos-test.result != 'success'
       uses: actions/github-script@v7
       with:
         script: |
-          const failedPlatforms = [];
-          if ('${{ needs.windows-test.result }}' !== 'success') failedPlatforms.push('🖥️ Windows');
-          if ('${{ needs.linux-test.result }}' !== 'success') failedPlatforms.push('🐧 Linux');
-          if ('${{ needs.macos-test.result }}' !== 'success') failedPlatforms.push('🍎 macOS');
+          const results = {
+            windows: '${{ needs.windows-test.result }}',
+            linux: '${{ needs.linux-test.result }}',
+            macOS: '${{ needs.macos-test.result }}'
+          };
+          
+          const failed = Object.entries(results)
+            .filter(([p, r]) => r !== 'success')
+            .map(([p, r]) => `❌ **${p.toUpperCase()}**: ${r}`).join('\n');
 
-          const title = `🚨 Korector Health Check Failed: ${failedPlatforms.join(', ')}`;
-          const body = `### 🚨 Korector Multi-Platform Health Check Failed
+          const title = `🚨 Korector Health Check Failed: ${Object.keys(results).filter(k => results[k] !== 'success').join(', ')}`;
+          const body = `### 🚨 Korector Multi-Platform Test Failed
 
-**Failed Platforms:**
-${failedPlatforms.join('\n')}
+**⏰ Time:** ${new Date().toISOString()}
 
-**Detailed Logs:**
-- [🖥️ Windows](${{ needs.windows-test.result_url }})
-- [🐧 Linux](${{ needs.linux-test.result_url }})
-- [🍎 macOS](${{ needs.macos-test.result_url }})
-
-**Test Commands (in each log):**
+**Results:**
 \`\`\`
-python -c "from korector import NaverSpellChecker(verbose=True); print(NaverSpellChecker(verbose=True).health_check())"
-korector --health-check --verbose
+${Object.entries(results).map(([p,r]) => `${p.padEnd(8)}: ${r}`).join('\n')}
 \`\`\`
 
-**Windows Special:**
-- 로컬 성공 헤더로 네이버 디버깅 포함
-- Chrome/143 + Edge 헤더 정확 복사`;
+**🔍 Windows Debug Info:**
+Check **"🔍 Windows Naver Debug (로컬 성공 헤더)"** step for:
+- passportKey 패턴 매치 결과
+- 40자 hex 빈도 분석
+- 네이버 HTML 길이/상태
+
+**Logs:**
+- [Windows](${{ needs.windows-test.result_url }})
+- [Linux](${{ needs.linux-test.result_url }})
+- [macOS](${{ needs.macos-test.result_url }})
+
+**Windows 헤더:** Chrome 143 + Edge (로컬 성공 헤더 정확 복사)`;
 
           await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: title,
-            body: body,
-            labels: ['bug', 'korector-api', 'health-check', 'multi-platform']
+            title,
+            body,
+            labels: ['bug', 'korector-api', 'health-check', 'windows-priority']
           });
