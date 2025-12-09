@@ -7,201 +7,132 @@ on:
 
 permissions:
   contents: read
-  issues: write  # 이슈 생성 위해 필요
+  issues: write
 
 jobs:
-  health-check:
-    runs-on: ubuntu-latest
-
+  # 🔄 Windows 테스트
+  windows-test:
+    runs-on: windows-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-
-    - name: Install build tools
+    
+    - name: 🧹 Clean & Build (Windows)
+      shell: powershell
       run: |
-        pip install --upgrade pip
-        pip install build setuptools wheel
-
-    # 🔹 1단계: 기존 빌드물 완전 제거
-    - name: Clean previous builds
-      run: |
-        rm -rf dist/ build/ *.egg-info/ .eggs/ .pytest_cache/
-        pip cache purge
-        echo "🧹 Cleaned previous builds and pip cache"
-
-    # 🔹 2단계: 기존 korector 완전 제거
-    - name: Uninstall existing Korector
-      run: |
-        pip uninstall korector -y || true
-        pip show korector || echo "✅ No existing korector found"
-        echo "🗑️ Removed existing korector (if any)"
-
-    # 🔹 3단계: 새로 빌드
-    - name: Build package (1.0.6)
-      run: |
+        pip install --upgrade pip build setuptools wheel
+        Remove-Item -Recurse -Force dist, build, *.egg-info -ErrorAction SilentlyContinue
+        pip uninstall korector -y 2>$null
         python -m build
-        echo "🏗️ Built korector $(ls -la dist/ | tail -1 | awk '{print $9 " (" $5 " bytes)"}')"
-        echo "📦 Built packages:"
-        ls -la dist/
-
-    # 🔹 4단계: 클린 설치
-    - name: Clean install Korector (1.0.6)
-      run: |
         pip install .
         pip show korector
-        echo "✅ Installed korector 1.0.6 from local build"
 
-    # 🔥🔥 NEW: 네이버 HTML 완전 분석 (passportKey 위치 파악)
-    - name: 🔍 Debug Naver HTML (passportKey 위치 확인)
+    - name: 🔍 Windows Naver Debug + korector --health-check
+      shell: powershell
       run: |
-        python - << 'EOF'
-        import requests
-        import re
-        from collections import Counter
-        
-        print("🔍 네이버 HTML 완전 분석 (Linux UA)")
-        print("=" * 80)
-        
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        })
-        
-        url = 'https://search.naver.com/search.naver?where=nexearch&query=네이버+맞춤법+검사기'
-        resp = session.get(url, timeout=15)
-        
-        print(f"✅ HTTP Status: {resp.status_code}")
-        print(f"📏 Content-Length: {len(resp.text):,} bytes")
-        print(f"📄 Content-Type: {resp.headers.get('content-type', 'unknown')}")
-        
-        # 1️⃣ 기존 패턴들 테스트
-        patterns = [
-            r'checker:\s*"https://ts-proxy\.naver\.com/ocontent/util/SpellerProxy\?passportKey=([a-f0-9]{40})"',
-            r'passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
-            r'"passportKey["\']\s*:\s*["\']([a-f0-9]{40})',
-            r'passportKey["\']\s*=\s*["\']([a-f0-9]{40})',
-            r'SpellerProxy[^>]*passportKey["\']?\s*[:=]\s*["\']([a-f0-9]{40})',
-            r'url["\']\s*:\s*["\']https://ts-proxy[^"]*passportKey=([a-f0-9]{40})',
-        ]
-        
-        print("\n📋 패턴 매치 결과:")
-        print("-" * 50)
-        for i, pattern in enumerate(patterns, 1):
-            matches = re.findall(pattern, resp.text, re.IGNORECASE)
-            status = f"✅ {len(matches)}개" if matches else "❌ 없음"
-            if matches:
-                print(f"  {i}. {status}: {matches[0][:16]}...")
-            else:
-                print(f"  {i}. {status}")
-        
-        # 2️⃣ 모든 40자 hex 빈도 분석
-        all_hex = re.findall(r'[a-f0-9]{40}', resp.text)
-        print(f"\n🔢 40자 hex 문자열: {len(all_hex)}개")
-        if all_hex:
-            top_keys = Counter(all_hex).most_common(3)
-            for i, (key, count) in enumerate(top_keys, 1):
-                print(f"  Top {i}: {key[:16]}... (x{count})")
-        
-        # 3️⃣ SpellerProxy 주변 1000자
-        speller_pos = resp.text.lower().find('spellerproxy')
-        if speller_pos != -1:
-            snippet_start = max(0, speller_pos - 500)
-            snippet_end = min(len(resp.text), speller_pos + 500)
-            snippet = resp.text[snippet_start:snippet_end]
-            print(f"\n📄 SpellerProxy 주변 1000자:")
-            print("-" * 50)
-            print(repr(snippet[:500])[1:-1])  # 첫 500자만
-            print("..." if len(snippet) > 500 else "")
-        else:
-            print("\n❌ 'SpellerProxy' 문자열 없음")
-        
-        # 4️⃣ 스크립트 태그 내 검색
-        scripts = re.findall(r'<script[^>]*>(.*?)</script>', resp.text, re.DOTALL | re.IGNORECASE)
-        print(f"\n📜 Script 태그: {len(scripts)}개")
-        for i, script in enumerate(scripts[:3], 1):  # 처음 3개만
-            hex_in_script = len(re.findall(r'[a-f0-9]{40}', script))
-            if hex_in_script > 0:
-                print(f"  Script {i}: {hex_in_script}개 hex 발견")
-        
-        EOF
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Windows CLI:', checker.health_check())"
+        korector --health-check --verbose
 
-    - name: Run Korector health check
-      id: health
+  # 🔄 Linux (Ubuntu) 테스트  
+  linux-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 🧹 Clean & Build (Linux)
       run: |
-        python - << 'EOF'
-        from korector import NaverSpellChecker
-        import json
-        import sys
+        pip install --upgrade pip build setuptools wheel
+        rm -rf dist/ build/ *.egg-info/
+        pip uninstall korector -y || true
+        python -m build
+        pip install .
+        pip show korector
 
-        print("=== Korector Health Check (1.0.6) ===")
-        import korector
-        print(f"Version: {korector.__version__}")
-        print(f"Location: {korector.__file__}")
+    - name: 🔍 Linux Naver Debug + korector --health-check
+      run: |
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Linux CLI:', checker.health_check())"
+        korector --health-check --verbose
 
-        checker = NaverSpellChecker(verbose=True)  # 🔍 디버깅 위해 verbose=True
-        result = checker.health_check()
+  # 🔄 macOS 테스트 (iOS 비슷)
+  macos-test:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 🧹 Clean & Build (macOS)
+      run: |
+        pip install --upgrade pip build setuptools wheel
+        rm -rf dist/ build/ *.egg-info/
+        pip uninstall korector -y || true
+        python -m build
+        pip install .
+        pip show korector
 
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+    - name: 🔍 macOS Naver Debug + korector --health-check
+      run: |
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('macOS CLI:', checker.health_check())"
+        korector --health-check --verbose
 
-        if result.get("status") != "ok":
-            print("❌ HEALTH CHECK FAILED!")
-            print("💡 위 디버깅 로그 확인 후 패턴 업데이트 필요")
-            sys.exit(1)
-        print("✅ HEALTH CHECK PASSED!")
-        EOF
+  # 📊 종합 결과 리포트
+  report:
+    needs: [windows-test, linux-test, macos-test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: 📊 Multi-Platform Test Report
+      run: |
+        echo "
+        🖥️  WINDOWS: ${{ needs.windows-test.result }}
+        🐧  LINUX:   ${{ needs.linux-test.result }}  
+        🍎  macOS:   ${{ needs.macos-test.result }}
+        
+        ✅ ALL PASS → 녹색 불!
+        ❌ ANY FAIL → Issue 자동 생성
+        "
 
-    # 🔹 실패했을 때만 이슈 생성 (디버깅 정보 포함)
-    - name: Create issue on failure
-      if: failure()
+    - name: 🚨 Create Issue if ANY platform fails
+      if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
       uses: actions/github-script@v7
       with:
         script: |
-          const now = new Date().toISOString();
-          const sha = context.sha;
-          const repoFull = context.repo.owner + '/' + context.repo.repo;
+          const results = {
+            windows: '${{ needs.windows-test.result }}',
+            linux: '${{ needs.linux-test.result }}',
+            macos: '${{ needs.macos-test.result }}'
+          };
+          
+          const failed = Object.entries(results)
+            .filter(([platform, result]) => result !== 'success')
+            .map(([platform, result]) => `❌ **${platform.toUpperCase()}**: ${result}`).join('\n');
 
-          const title = `🚨 Korector Health Check Failed (${sha.slice(0,7)})`;
-          const body =
-            `### 🚨 Korector API Health Check Failed\n\n` +
-            `**⏰ Time:** ${now}\n` +
-            `**🔢 Commit:** ${sha}\n` +
-            `**📂 Repository:** ${repoFull}\n` +
-            `**🖥️ Platform:** Linux (GitHub Actions)\n\n` +
-            `#### 🏗️ 빌드/설치 로그\n` +
-            `- Version: 1.0.6\n` +
-            `- ✅ 로컬 빌드 설치 성공\n\n` +
-            `#### 🔍 디버깅 결과\n` +
-            `위 워크플로우의 **"🔍 Debug Naver HTML"** 스텝을 확인하세요!\n` +
-            `- SpellerProxy 주변 HTML\n` +
-            `- 새로운 passportKey 패턴\n` +
-            `- 40자 hex 빈도 분석\n\n` +
-            `#### 🔧 Reproduction\n` +
-            `\`\`\`bash\n` +
-            `git clone https://github.com/${repoFull}.git\n` +
-            `git checkout ${sha}\n` +
-            `pip uninstall korector -y\n` +
-            `pip install -e .\n` +
-            `korector --health-check --verbose\n` +
-            `\`\`\`\n\n` +
-            `#### 📋 Action Required\n` +
-            `- [ ] **디버깅 로그**에서 새 passportKey 패턴 찾기\n` +
-            `- [ ] \`*_get_key_pattern()*` 메서드 업데이트\n` +
-            `- [ ] **1.0.7** 릴리스\n`;
+          const title = `🚨 Korector Multi-Platform Health Check Failed`;
+          const body = 
+            `### 🚨 Korector Multi-Platform Test Failed\n\n` +
+            `**⏰ Time:** ${new Date().toISOString()}\n\n` +
+            `${failed}\n\n` +
+            `#### 🔍 Check individual job logs:\n` +
+            `- [Windows](${{ needs.windows-test.result_url }})\n` +
+            `- [Linux](${{ needs.linux-test.result_url }})\n` +
+            `- [macOS](${{ needs.macos-test.result_url }})\n\n` +
+            `#### 🧪 korector --health-check Results:\n` +
+            `각 플랫폼별 로그에서 \`korector --health-check --verbose\` 결과를 확인하세요.\n\n` +
+            `#### 🔧 Next Steps:\n` +
+            `- [ ] Naver HTML 패턴 분석\n` +
+            `- [ ] \`_get_key_pattern()\` 업데이트\n` +
+            `- [ ] 1.0.7 릴리스`;
 
           await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             title,
             body,
-            labels: ['bug', 'korector-api', 'health-check', 'needs-triage']
+            labels: ['bug', 'korector-api', 'health-check', 'multi-platform']
           });
