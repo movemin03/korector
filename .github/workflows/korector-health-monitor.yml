@@ -31,10 +31,10 @@ jobs:
           status=$(echo "$result" | jq -r '.status // empty')
           if [ "$status" = "ok" ]; then
             echo "health_status=success" >> $GITHUB_OUTPUT
-            echo "Health check passed ✅" >> $GITHUB_STEP_SUMMARY
+            echo "Health check passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "health_status=failure" >> $GITHUB_OUTPUT
-            echo "Health check failed ❌" >> $GITHUB_STEP_SUMMARY
+            echo "Health check failed" >> $GITHUB_STEP_SUMMARY
             echo "Status: $status" >> $GITHUB_STEP_SUMMARY
           fi
           
