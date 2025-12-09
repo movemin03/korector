@@ -331,7 +331,6 @@ Korector는 다음과 같은 보안 기능을 제공합니다:
 - **입력 검증 및 Sanitization** - XSS/JavaScript Injection 방어
 - **HMAC 서명** - 요청 무결성 검증
 - **passportKey 해시 저장** - 민감 정보 노출 방지
-- **입력 길이 제한** - 최대 10,000자
 - **안전한 리소스 정리** - 메모리에서 민감 정보 제거
 
 ---
