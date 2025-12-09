@@ -28,10 +28,14 @@ jobs:
         pip install .
         pip show korector
 
-    - name: 🔍 Windows Naver Debug + korector --health-check
+    - name: 🔍 Windows Naver Debug + korector --health-check (via proxy)
       shell: powershell
+      env:
+        HTTP_PROXY: http://proxy.geonode.com:8080
+        HTTPS_PROXY: http://proxy.geonode.com:8080
       run: |
-        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Windows CLI:', checker.health_check())"
+        Write-Output "HTTP_PROXY=$env:HTTP_PROXY"
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Windows CLI via proxy:', checker.health_check())"
         korector --health-check --verbose
 
   # 🔄 Linux (Ubuntu) 테스트  
@@ -51,9 +55,13 @@ jobs:
         pip install .
         pip show korector
 
-    - name: 🔍 Linux Naver Debug + korector --health-check
+    - name: 🔍 Linux Naver Debug + korector --health-check (via proxy)
+      env:
+        HTTP_PROXY: http://proxy.geonode.com:8080
+        HTTPS_PROXY: http://proxy.geonode.com:8080
       run: |
-        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Linux CLI:', checker.health_check())"
+        echo "HTTP_PROXY=$HTTP_PROXY"
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Linux CLI via proxy:', checker.health_check())"
         korector --health-check --verbose
 
   # 🔄 macOS 테스트 (iOS 비슷)
@@ -73,9 +81,13 @@ jobs:
         pip install .
         pip show korector
 
-    - name: 🔍 macOS Naver Debug + korector --health-check
+    - name: 🔍 macOS Naver Debug + korector --health-check (via proxy)
+      env:
+        HTTP_PROXY: http://proxy.geonode.com:8080
+        HTTPS_PROXY: http://proxy.geonode.com:8080
       run: |
-        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('macOS CLI:', checker.health_check())"
+        echo "HTTP_PROXY=$HTTP_PROXY"
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('macOS CLI via proxy:', checker.health_check())"
         korector --health-check --verbose
 
   # 📊 종합 결과 리포트
@@ -86,17 +98,21 @@ jobs:
     steps:
     - name: 📊 Multi-Platform Test Report
       run: |
-        echo "
-        🖥️  WINDOWS: ${{ needs.windows-test.result }}
-        🐧  LINUX:   ${{ needs.linux-test.result }}  
-        🍎  macOS:   ${{ needs.macos-test.result }}
-        
-        ✅ ALL PASS → 녹색 불!
-        ❌ ANY FAIL → Issue 자동 생성
-        "
+        echo "🖥️  WINDOWS: ${{ needs.windows-test.result }}"
+        echo "🐧  LINUX:   ${{ needs.linux-test.result }}"
+        echo "🍎  macOS:   ${{ needs.macos-test.result }}"
+        echo ""
+        if [ "${{ needs.windows-test.result }}" = "success" ] && [ "${{ needs.linux-test.result }}" = "success" ] && [ "${{ needs.macos-test.result }}" = "success" ]; then
+          echo "✅ ALL PASS → 녹색 불!"
+        else
+          echo "❌ SOME FAILED → Issue 자동 생성"
+        fi
 
     - name: 🚨 Create Issue if ANY platform fails
-      if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+      if: |
+        needs.windows-test.result == 'failure' ||
+        needs.linux-test.result == 'failure' ||
+        needs.macos-test.result == 'failure'
       uses: actions/github-script@v7
       with:
         script: |
@@ -108,28 +124,28 @@ jobs:
           
           const failed = Object.entries(results)
             .filter(([platform, result]) => result !== 'success')
-            .map(([platform, result]) => `❌ **${platform.toUpperCase()}**: ${result}`).join('\n');
+            .map(([platform, result]) => `❌ **${platform.toUpperCase()}**: ${result}`)
+            .join('\n');
 
           const title = `🚨 Korector Multi-Platform Health Check Failed`;
-          const body = 
-            `### 🚨 Korector Multi-Platform Test Failed\n\n` +
+          const body =
+            `### 🚨 Korector Multi-Platform Test Failed (with HTTP_PROXY)\n\n` +
             `**⏰ Time:** ${new Date().toISOString()}\n\n` +
             `${failed}\n\n` +
             `#### 🔍 Check individual job logs:\n` +
-            `- [Windows](${{ needs.windows-test.result_url }})\n` +
-            `- [Linux](${{ needs.linux-test.result_url }})\n` +
-            `- [macOS](${{ needs.macos-test.result_url }})\n\n` +
+            `- Windows job: windows-test\n` +
+            `- Linux job: linux-test\n` +
+            `- macOS job: macos-test\n\n` +
             `#### 🧪 korector --health-check Results:\n` +
-            `각 플랫폼별 로그에서 \`korector --health-check --verbose\` 결과를 확인하세요.\n\n` +
+            `각 플랫폼별 로그에서 \`korector --health-check --verbose\` 결과와 프록시 적용 여부(HTTP_PROXY 라인)를 확인하세요.\n\n` +
             `#### 🔧 Next Steps:\n` +
-            `- [ ] Naver HTML 패턴 분석\n` +
-            `- [ ] \`_get_key_pattern()\` 업데이트\n` +
-            `- [ ] 1.0.7 릴리스`;
+            `- [ ] 프록시를 통한 네이버 접속 성공 여부 확인\n` +
+            `- [ ] 여전히 passportKey 실패 시 HTML 패턴 추가 분석\n`;
 
           await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             title,
             body,
-            labels: ['bug', 'korector-api', 'health-check', 'multi-platform']
+            labels: ['bug', 'korector-api', 'health-check', 'multi-platform', 'proxy']
           });
