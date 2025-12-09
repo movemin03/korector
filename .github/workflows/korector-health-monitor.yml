@@ -23,11 +23,12 @@ jobs:
       - name: Health Check
         shell: pwsh
         run: |
-          $result = & korector --health-check
+          $result = python -m cli --health-check 2>$null
           if ($result -match '"status": *"ok"') {
             Write-Output "PASS ✅"
             exit 0
           } else {
             Write-Output "FAIL ❌"
+            Write-Output $result
             exit 1
           }
