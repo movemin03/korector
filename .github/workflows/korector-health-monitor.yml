@@ -55,37 +55,44 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const result = fs.readFileSync('health-check-result.json', 'utf8');
-            const status = JSON.parse(result).status || 'unknown';
+            const resultRaw = fs.readFileSync('health-check-result.json', 'utf8');
+            
+            // 안전한 상태 추출
+            let status = 'unknown';
+            if (resultRaw.includes('"status": "ok"')) {
+              status = 'ok';
+            } else if (resultRaw.includes('"status": "error"')) {
+              status = 'error';
+            }
             
             const issueTitle = '[Health Check] Naver Spell Checker API Status';
-            const issueBody = `## Health Check Result (${new Date().toISOString()})
+            const timestamp = new Date().toISOString();
+            const issueBody = `## Health Check Result (${timestamp})
 
-**Status**: \`${status}\`
+Status: ${status}
 
 ### Details
 \`\`\`json
-${result}
+${resultRaw.slice(0, 5000)}
 \`\`\`
 
 **Run ID**: ${{ github.run_id }}
-**Workflow**: ${{ github.workflow }} #${{ github.run_number }}`;
+**Workflow**: ${{ github.workflow }} #${{ github.run_number }}
+**Commit**: ${{ github.sha }}`;
 
-            let issue;
-            
             // 기존 health check 이슈 찾기
-            const existingIssues = await github.rest.issues.listForRepo({
+            const { data: existingIssues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               creator: 'github-actions[bot]',
               labels: ['health-check']
             });
             
-            const healthIssue = existingIssues.data.find(issue => 
+            const healthIssue = existingIssues.find(issue => 
               issue.title === issueTitle
             );
 
-            if (steps.health.outputs.health_status === 'success') {
+            if (steps.health.outputs.health_status === 'success' && status === 'ok') {
               // 성공: 기존 이슈 닫기
               if (healthIssue) {
                 await github.rest.issues.update({
@@ -100,23 +107,27 @@ ${result}
               core.info('Health check passed - No issue needed');
             } else {
               // 실패: 이슈 생성 또는 업데이트
+              const labels = status === 'ok' ? ['health-check'] : ['health-check', 'bug'];
+              
               if (healthIssue) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: healthIssue.number,
-                  body: issueBody
+                  state: 'open',
+                  body: issueBody,
+                  labels: labels
                 });
                 core.info(`Updated health check issue #${healthIssue.number}`);
               } else {
-                const newIssue = await github.rest.issues.create({
+                await github.rest.issues.create({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   title: issueTitle,
                   body: issueBody,
-                  labels: ['health-check', 'bug']
+                  labels: labels
                 });
-                core.info(`Created health check issue #${newIssue.data.number}`);
+                core.info(`Created health check issue`);
               }
             }
         env:
