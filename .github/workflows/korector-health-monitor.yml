@@ -6,7 +6,7 @@ on:
 
 jobs:
   health-check:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -14,17 +14,20 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: |
+      - name: Install dependencies
+        shell: pwsh
+        run: |
           pip install --upgrade pip setuptools wheel
           pip install .
-        shell: bash
 
       - name: Health Check
+        shell: pwsh
         run: |
-          if korector --health-check | grep -q '"status": *"ok"'; then
-            echo "PASS ✅"
+          $result = & korector --health-check
+          if ($result -match '"status": *"ok"') {
+            Write-Output "PASS ✅"
             exit 0
-          else
-            echo "FAIL ❌"
+          } else {
+            Write-Output "FAIL ❌"
             exit 1
-          fi
+          }
