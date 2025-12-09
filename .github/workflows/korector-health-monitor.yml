@@ -61,30 +61,24 @@ jobs:
     - name: Summary
       if: always()
       run: |
-        echo "Health check completed at ${{ github.event.head_commit.timestamp || now() }}"
-        echo "Korector version: __import__(\"korector\").__version__"
+        echo "Health check completed at $(date -u)"
+        echo "Korector version: $(python -c 'import korector; print(korector.__version__)')"
     
     - name: Create Issue on Failure
       if: env.HEALTH_CHECK_FAILED == 'true'
       uses: actions/github-script@v7
       with:
         script: |
-          const issue = await github.rest.issues.create({
+          github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             title: '🚨 Korector Health Check Failed',
-            body: `
-### 🚨 Korector API Health Check Failed
+            body: `### 🚨 Korector API Health Check Failed
 
-**⏰ Time:** ${new Date().toISOString()}
+**⏰ Time:** ${{ github.event.head_commit.timestamp || github.run_id }}
 **🔢 Commit:** ${{ github.sha }}
 **🐳 Runner:** ubuntu-latest
 **🐍 Python:** 3.11
-
-#### Error Details
-\`\`\`json
-${JSON.stringify((await github.rest.actions.listWorkflowRunArtifacts({owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId})), null, 2)}
-\`\`\`
 
 #### Reproduction Steps
 1. \`git clone https://github.com/${{ github.repository }}.git\`
@@ -93,13 +87,8 @@ ${JSON.stringify((await github.rest.actions.listWorkflowRunArtifacts({owner: con
 4. \`python -c \"from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())\"\`
 
 #### Action Required ⚠️
-- [ ] Check Naver API status: https://search.naver.com/search.naver?query=네이버+맞춤법+검사기
-- [ ] Verify passportKey extraction logic in \`korector._refresh_passport_key()\`
-- [ ] Test local: \`pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}\`
-
-**Labels:** bug, korector-api, health-check
-            `,
-            labels: ['bug', 'korector-api', 'health-check', 'needs-triage']
+- [ ] Check Naver API: https://search.naver.com/search.naver?query=네이버+맞춤법+검사기
+- [ ] Verify \`korector._refresh_passport_key()\`
+- [ ] Test: \`pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}\``,
+            labels: ['bug', 'korector-api', 'health-check']
           })
-          
-          core.info(\`✅ Issue created: https://github.com/${{ github.repository }}/issues/\${issue.data.number}\`)
