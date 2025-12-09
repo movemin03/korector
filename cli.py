@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Korector CLI - Command Line Interface
+Korector CLI - Command Line Interface v1.0.6
+No external dependencies - Pure Python
 """
 
 import argparse
@@ -17,12 +18,12 @@ def main():
             pass
 
     parser = argparse.ArgumentParser(
-        description='Korector: Korean Spell Checker',
+        description='Korector: Korean Spell Checker v1.0.6 (Platform-aware UA)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예제:
   korector "안녕 하세요"
-  korector --health-check
+  korector --health-check  
   korector -f input.txt -o output.txt
   korector "마시면서배우는 수울게임" --verbose
         """
@@ -36,6 +37,7 @@ def main():
     parser.add_argument('--version', action='version', version=f'Korector {__import__("korector").__version__}')
 
     args = parser.parse_args()
+
     checker = NaverSpellChecker(verbose=args.verbose)
 
     if args.health_check:
@@ -60,7 +62,6 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    # 진행 상황 콜백 (CLI 전용)
     def progress_callback(current: int, total: int):
         print(f"[{current}/{total}] 처리 중...")
 
@@ -71,13 +72,11 @@ def main():
         sys.exit(1)
 
     print(f"\n처리 시간: {result['time']:.3f}초")
-
     if 'total_errors' in result:
         print(f"전체 오류: {result['total_errors']}")
         print(f"처리 청크: {result['total_chunks']}")
     else:
         print(f"오류 개수: {result['error_count']}")
-
     print(f"변경 여부: {'있음' if result['has_error'] else '없음'}")
 
     if args.verbose:
@@ -85,12 +84,10 @@ def main():
         print("원본:")
         print('=' * 60)
         print(result['original'][:1000] + "..." if len(result['original']) > 1000 else result['original'])
-
         print(f"\n{'=' * 60}")
         print("교정:")
         print('=' * 60)
         print(result['corrected'][:1000] + "..." if len(result['corrected']) > 1000 else result['corrected'])
-
         if result.get('html'):
             print(f"\n{'=' * 60}")
             print("HTML (오류 표시):")
@@ -112,7 +109,6 @@ def main():
         print(result['corrected'])
 
     sys.exit(0)
-
 
 if __name__ == "__main__":
     main()
