@@ -2,12 +2,12 @@ name: Korector Health Monitor
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 자정 (UTC 기준, 필요시 조정)
+    - cron: '0 0 * * *'  # 매일 자정 (UTC 기준)
   workflow_dispatch:
 
 permissions:
   contents: read
-  # Issue 자동 생성까지는 당분간 하지 말고, 나중에 안정되면 추가하는 걸 추천
+  issues: write  # 🔴 이슈 생성 위해 필요
 
 jobs:
   health-check:
@@ -36,10 +36,12 @@ jobs:
         pip install .
 
     - name: Run Korector health check
+      id: health
       run: |
         python - << 'EOF'
         from korector import NaverSpellChecker
         import json
+        import sys
 
         print("=== Korector Health Check ===")
         try:
@@ -53,6 +55,45 @@ jobs:
 
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
-        if result.get("status") != "ok":
-            raise SystemExit(1)
+        # 결과를 GitHub Actions 출력 값으로 전달
+        ok = result.get("status") == "ok"
+        print(f"::set-output name=status::{result.get('status')}")
+        if not ok:
+            sys.exit(1)
         EOF
+
+    # 🔹 실패했을 때만 이슈 생성
+    - name: Create issue on failure
+      if: failure()  # 위 step 중 하나라도 실패하면 실행
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const now = new Date().toISOString();
+          const sha = context.sha;
+          const repoFull = context.repo.owner + '/' + context.repo.repo;
+
+          const title = `🚨 Korector Health Check Failed (${sha.slice(0,7)})`;
+          const body =
+            `### 🚨 Korector Health Check Failed\n\n` +
+            `**⏰ Time:** ${now}\n` +
+            `**🔢 Commit:** ${sha}\n` +
+            `**📂 Repository:** ${repoFull}\n\n` +
+            `#### Reproduction\n` +
+            `\`\`\`bash\n` +
+            `git clone https://github.com/${repoFull}.git\n` +
+            `cd ${context.repo.repo}\n` +
+            `git checkout ${sha}\n` +
+            `pip install -e .\n` +
+            `python -c "from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())"\n` +
+            `\`\`\`\n\n` +
+            `#### Action Required\n` +
+            `- [ ] Check Naver API status\n` +
+            `- [ ] Verify korector._refresh_passport_key()\n`;
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title,
+            body,
+            labels: ['bug', 'korector-api', 'health-check']
+          });
