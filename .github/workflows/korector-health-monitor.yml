@@ -1,7 +1,7 @@
 name: Health Check
 on:
   schedule:
-    - cron: '0 1 * * *'  # 매일 UTC 01:00 (KST 10:00)
+    - cron: '0 1 * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,15 +21,20 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
 
       - name: Install korector
-        run: |
-          pip install .
+        run: pip install .
 
       - name: Run health check
         id: health
         run: |
-          result=$(korector --health-check 2>&1 || echo '{"status": "error", "message": "Command failed"}')
-          echo "$result"
+          set +e
+          result=$(korector --health-check 2>&1)
+          exit_code=$?
           
+          if [ $exit_code -ne 0 ]; then
+            result='{"status": "error", "message": "Health check command failed", "exit_code": '$exit_code'}'
+          fi
+          
+          echo "$result"
           echo "$result" > health-check-result.json
           
           if echo "$result" | grep -q '"status": *"ok"'; then
@@ -38,9 +43,7 @@ jobs:
           else
             echo "Health check 오류 발생"
             echo "health_status=failure" >> $GITHUB_OUTPUT
-            echo "$result"
           fi
-        continue-on-error: true
 
       - name: Upload health check result
         if: always()
@@ -48,18 +51,20 @@ jobs:
         with:
           name: health-check-result-${{ github.run_id }}
           path: health-check-result.json
+          if-no-files-found: warn
 
       - name: Manage health check issue
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            let resultRaw = '{"status": "error", "message": "No result file"}';
+            const fs = require('fs');
+            let resultRaw = '{"status": "unknown", "message": "Result file not found"}';
+            
             try {
-              const fs = require('fs');
               resultRaw = fs.readFileSync('health-check-result.json', 'utf8');
             } catch (e) {
-              console.log('Result file not found:', e.message);
+              console.log('Warning: health-check-result.json not found');
             }
             
             const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
@@ -68,55 +73,62 @@ jobs:
             let status = 'unknown';
             if (resultRaw.includes('"status": "ok"')) {
               status = 'ok';
-            } else {
+            } else if (resultRaw.includes('"status": "error"')) {
               status = 'error';
             }
             
             const issueTitle = '[Health Check] Naver Spell Checker API Status';
-            const issueBody = '## Health Check Result (' + timestamp + ')\n\n' +
-              '**Status**: ' + status + '\n\n' +
-              '### Details\n' +
-              '``````\n\n' +
-              '**실행 URL**: [' + '${{ github.run_id }}' + '](' + runUrl + ')\n\n' +
-              '**Workflow**: ${{ github.workflow }} #${{ github.run_number }}\n' +
-              '**Commit**: [${{ github.sha_short }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})';
+            const issueBody = '## Health Check Result\n\n' +
+              '**Status**: ' + status + '\n' +
+              '**Time**: ' + timestamp + '\n\n' +
+              '### Details\n```
+              resultRaw.substring(0, 3000) + 
+              '\n```\n\n' +
+              '**Run URL**: [#${{ github.run_id }}](' + runUrl + ')';
             
-            const issues = await github.rest.issues.listForRepo({
+            const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              labels: ['health-check']
+              labels: ['health-check'],
+              state: 'all'
             });
             
             let healthIssue = null;
-            for (const issue of issues.data) {
+            for (const issue of issues) {
               if (issue.title === issueTitle) {
                 healthIssue = issue;
                 break;
               }
             }
 
-            if (steps.health.outputs.health_status === 'success' && status === 'ok') {
+            if (status === 'ok') {
+              if (healthIssue && healthIssue.state === 'open') {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: healthIssue.number,
+                  state: 'closed'
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: healthIssue.number,
+                  body: '✅ Health check 복구됨 (' + timestamp + ')'
+                });
+                core.info('Issue closed - Health check 성공');
+              }
+            } else {
+              const labels = ['health-check', 'bug'];
+              
               if (healthIssue) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: healthIssue.number,
-                  state: 'closed',
-                  labels: ['health-check', 'resolved']
+                  state: 'open',
+                  body: issueBody
                 });
-              }
-              core.info('Health check 성공');
-            } else {
-              const labels = status === 'ok' ? ['health-check'] : ['health-check', 'bug'];
-              
-              if (healthIssue) {
-                await github.rest.issues.edit({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: healthIssue.number,
-                  body: issueBody,
-                  labels: labels
-                });
+                core.info('Issue updated - Health check 실패');
               } else {
                 await github.rest.issues.create({
                   owner: context.repo.owner,
@@ -125,5 +137,6 @@ jobs:
                   body: issueBody,
                   labels: labels
                 });
+                core.info('Issue created - Health check 실패');
               }
             }
