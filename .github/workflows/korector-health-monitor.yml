@@ -2,7 +2,7 @@ name: Korector Health Monitor
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *'  # 매일 자정 (UTC 기준)
   workflow_dispatch:
 
 permissions:
@@ -10,142 +10,126 @@ permissions:
   issues: write
 
 jobs:
-  # 🖥️ Windows 테스트 (수정됨)
+  # 🔄 Windows 테스트
   windows-test:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
-    - name: 🧹 Clean & Build (Windows) - FIXED
+    - name: 🧹 Clean & Build (Windows)
       shell: powershell
       run: |
         pip install --upgrade pip build setuptools wheel
-        
-        # 안전한 빌드물 제거
-        if (Test-Path "dist") { Remove-Item -Recurse -Force dist }
-        if (Test-Path "build") { Remove-Item -Recurse -Force build }
-        Get-ChildItem -Filter "*.egg-info" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        
-        # 안전한 korector 제거
-        try {
-            pip uninstall korector -y
-            Write-Output "✅ korector uninstalled"
-        } catch {
-            Write-Output "ℹ️ korector was not installed (OK)"
-        }
-        
-        # 빌드 & 설치
+        Remove-Item -Recurse -Force dist, build, *.egg-info -ErrorAction SilentlyContinue
         python -m build
         pip install .
-        pip show korector | Out-String -Width 1000
-        Write-Output "✅ Windows Build Success"
+        pip show korector
 
-    - name: 🖥️ Windows korector --health-check
+    - name: 🔍 Windows Naver Debug + korector --health-check
       shell: powershell
       run: |
-        Write-Output "🖥️ Windows Platform Test"
-        python -c "from korector import NaverSpellChecker; c=NaverSpellChecker(verbose=True); r=c.health_check(); print('Python:', r)"
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Windows CLI:', checker.health_check())"
         korector --health-check --verbose
-        Write-Output "✅ Windows CLI Test Complete"
 
-  # 🐧 Linux 테스트
+  # 🔄 Linux (Ubuntu) 테스트  
   linux-test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: 🧹 Clean & Build (Linux)
       run: |
         pip install --upgrade pip build setuptools wheel
-        rm -rf dist/ build/ *.egg-info/ || true
-        pip uninstall korector -y || true
+        rm -rf dist/ build/ *.egg-info/
         python -m build
         pip install .
         pip show korector
 
-    - name: 🐧 Linux korector --health-check
+    - name: 🔍 Linux Naver Debug + korector --health-check
       run: |
-        echo "🐧 Linux Platform Test"
-        python -c "from korector import NaverSpellChecker; c=NaverSpellChecker(verbose=True); print('Python:', c.health_check())"
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('Linux CLI:', checker.health_check())"
         korector --health-check --verbose
 
-  # 🍎 macOS 테스트
+  # 🔄 macOS 테스트 (iOS 비슷)
   macos-test:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: 🧹 Clean & Build (macOS)
       run: |
         pip install --upgrade pip build setuptools wheel
-        rm -rf dist/ build/ *.egg-info/ || true
-        pip uninstall korector -y || true
+        rm -rf dist/ build/ *.egg-info/
         python -m build
         pip install .
         pip show korector
 
-    - name: 🍎 macOS korector --health-check
+    - name: 🔍 macOS Naver Debug + korector --health-check
       run: |
-        echo "🍎 macOS Platform Test"
-        python -c "from korector import NaverSpellChecker; c=NaverSpellChecker(verbose=True); print('Python:', c.health_check())"
+        python -c "from korector import NaverSpellChecker; checker=NaverSpellChecker(verbose=True); print('macOS CLI:', checker.health_check())"
         korector --health-check --verbose
 
-  # 📊 결과 리포트
+  # 📊 종합 결과 리포트
   report:
     needs: [windows-test, linux-test, macos-test]
     runs-on: ubuntu-latest
     if: always()
     steps:
-    - name: 📊 Multi-Platform Summary
+    - name: 📊 Multi-Platform Test Report
       run: |
         echo "
-        🖥️  WINDOWS:  ${{ needs.windows-test.result  }} 
-        🐧  LINUX:    ${{ needs.linux-test.result    }}
-        🍎  macOS:    ${{ needs.macos-test.result    }}
+        🖥️  WINDOWS: ${{ needs.windows-test.result }}
+        🐧  LINUX:   ${{ needs.linux-test.result }}  
+        🍎  macOS:   ${{ needs.macos-test.result }}
         
-        $(if [[ '${{ needs.windows-test.result }}' == 'success' && '${{ needs.linux-test.result }}' == 'success' && '${{ needs.macos-test.result }}' == 'success' ]]; then echo '✅ ALL PLATFORMS PASS!'; else echo '⚠️  SOME PLATFORMS FAILED'; fi)
+        ✅ ALL PASS → 녹색 불!
+        ❌ ANY FAIL → Issue 자동 생성
         "
 
-    - name: 🚨 Issue on Failure
-      if: contains(fromJSON(needs.*.result), 'failure') || contains(fromJSON(needs.*.result), 'cancelled')
+    - name: 🚨 Create Issue if ANY platform fails
+      if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
       uses: actions/github-script@v7
       with:
         script: |
           const results = {
             windows: '${{ needs.windows-test.result }}',
-            linux: '${{ needs.linux-test.result }}', 
+            linux: '${{ needs.linux-test.result }}',
             macos: '${{ needs.macos-test.result }}'
           };
           
-          const failedPlatforms = Object.entries(results)
-            .filter(([p, r]) => r !== 'success')
-            .map(([p, r]) => `❌ ${p.toUpperCase()}: ${r}`).join('\n');
-          
+          const failed = Object.entries(results)
+            .filter(([platform, result]) => result !== 'success')
+            .map(([platform, result]) => `❌ **${platform.toUpperCase()}**: ${result}`).join('\n');
+
+          const title = `🚨 Korector Multi-Platform Health Check Failed`;
+          const body = 
+            `### 🚨 Korector Multi-Platform Test Failed\n\n` +
+            `**⏰ Time:** ${new Date().toISOString()}\n\n` +
+            `${failed}\n\n` +
+            `#### 🔍 Check individual job logs:\n` +
+            `- [Windows](${{ needs.windows-test.result_url }})\n` +
+            `- [Linux](${{ needs.linux-test.result_url }})\n` +
+            `- [macOS](${{ needs.macos-test.result_url }})\n\n` +
+            `#### 🧪 korector --health-check Results:\n` +
+            `각 플랫폼별 로그에서 \`korector --health-check --verbose\` 결과를 확인하세요.\n\n` +
+            `#### 🔧 Next Steps:\n` +
+            `- [ ] Naver HTML 패턴 분석\n` +
+            `- [ ] \`_get_key_pattern()\` 업데이트\n` +
+            `- [ ] 1.0.7 릴리스`;
+
           await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: '🚨 Korector Multi-Platform Health Check Failed',
-            body: `**Failed Platforms:**
-\`\`\`
-${failedPlatforms}
-\`\`\`
-
-**Check logs:**
-- Windows: ${{ needs.windows-test.result_url }}
-- Linux:   ${{ needs.linux-test.result_url }} 
-- macOS:   ${{ needs.macos-test.result_url }}
-
-**CLI Results:** korector --health-check --verbose in each platform log`,
-            labels: ['bug', 'health-check', 'multi-platform']
+            title,
+            body,
+            labels: ['bug', 'korector-api', 'health-check', 'multi-platform']
           });
