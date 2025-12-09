@@ -2,7 +2,7 @@ name: Korector Health Check
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 자정
+    - cron: '0 0 * * *'  # 매일 자정 KST
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
     
     - name: Install Korector
       run: |
-        pip install korector
+        pip install .
     
     - name: Run Health Check
       id: health_check
@@ -33,14 +33,18 @@ jobs:
         from korector import NaverSpellChecker
         import json
         
-        checker = NaverSpellChecker()
+        checker = NaverSpellChecker(verbose=False)  # 조용한 모드
         result = checker.health_check()
         
+        print('=== Korector Health Check ===')
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        print('==============================')
         
-        # GitHub Actions 출력
         if result['status'] != 'ok':
+            print('❌ Health check failed!')
             exit(1)
+        else:
+            print('✅ Health check passed!')
         " || echo "HEALTH_CHECK_FAILED=true" >> $GITHUB_ENV
     
     - name: Create Issue on Failure
@@ -52,11 +56,21 @@ jobs:
             owner: context.repo.owner,
             repo: context.repo.repo,
             title: '🚨 Korector API Health Check Failed',
-            body: `### Korector API Health Check Failed
-            
-            **Time:** ${new Date().toISOString()}
-            
-            **Action:** Check Naver API status and passportKey extraction logic.
+            body: `
+### Korector API Health Check Failed
+
+**Time:** ${new Date().toISOString()}
+
+**Details:**
+\`\`\`bash
+pip install korector==${{ github.sha }}
+korector --health-check
+\`\`\`
+
+**Action Required:**
+1. Check Naver API status
+2. Verify passportKey extraction logic
+3. Test: \`pip install git+https://github.com/${{ github.repository }}.git\`
             `,
             labels: ['bug', 'korector-api', 'health-check']
           })
