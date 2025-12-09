@@ -2,8 +2,8 @@ from setuptools import setup
 
 setup(
     name='korector',
-    version='1.0.5',
-    author='movemin',
+    version='1.0.6',
+    author='ovin',
     description='Korean spell checker using Naver API (Linux/macOS/Windows)',
     long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
