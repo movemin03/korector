@@ -29,10 +29,10 @@ text
 ### 소스에서 설치
 
 
-git clone https://github.com/movemin03/korector.git
-cd korector
-python setup.py install
-text
+- git clone https://github.com/movemin03/korector.git
+- cd korector
+- python setup.py install
+- text
 
 또는 `korector` 폴더를 그대로 자신의 프로젝트에 포함시켜 사용할 수도 있습니다.
 
