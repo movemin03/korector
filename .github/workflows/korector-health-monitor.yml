@@ -1,4 +1,4 @@
-name: Korector Health Check
+name: Korector Health Monitor
 
 on:
   schedule:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout
+    - name: Checkout Korector
       uses: actions/checkout@v4
     
     - name: Set up Python
@@ -22,8 +22,14 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install Korector
+    - name: Install development dependencies
       run: |
+        pip install --upgrade pip
+        pip install build setuptools wheel
+    
+    - name: Build & Install Korector (local)
+      run: |
+        python -m build
         pip install .
     
     - name: Run Health Check
@@ -32,45 +38,68 @@ jobs:
         python -c "
         from korector import NaverSpellChecker
         import json
-        
-        checker = NaverSpellChecker(verbose=False)  # 조용한 모드
-        result = checker.health_check()
+        import sys
         
         print('=== Korector Health Check ===')
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(f'Version: {__import__(\"korector\").__version__}')
+        print(f'Commit: ${{ github.sha }}')
         print('==============================')
         
+        checker = NaverSpellChecker(verbose=False)
+        result = checker.health_check()
+        
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        
         if result['status'] != 'ok':
-            print('❌ Health check failed!')
-            exit(1)
+            print('\\n❌ HEALTH CHECK FAILED!')
+            print(f'Error: {result.get(\"message\", \"Unknown error\")}')
+            sys.exit(1)
         else:
-            print('✅ Health check passed!')
+            print('\\n✅ HEALTH CHECK PASSED!')
         " || echo "HEALTH_CHECK_FAILED=true" >> $GITHUB_ENV
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "Health check completed at ${{ github.event.head_commit.timestamp || now() }}"
+        echo "Korector version: __import__(\"korector\").__version__"
     
     - name: Create Issue on Failure
       if: env.HEALTH_CHECK_FAILED == 'true'
       uses: actions/github-script@v7
       with:
         script: |
-          github.rest.issues.create({
+          const issue = await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: '🚨 Korector API Health Check Failed',
+            title: '🚨 Korector Health Check Failed',
             body: `
-### Korector API Health Check Failed
+### 🚨 Korector API Health Check Failed
 
-**Time:** ${new Date().toISOString()}
+**⏰ Time:** ${new Date().toISOString()}
+**🔢 Commit:** ${{ github.sha }}
+**🐳 Runner:** ubuntu-latest
+**🐍 Python:** 3.11
 
-**Details:**
-\`\`\`bash
-pip install korector==${{ github.sha }}
-korector --health-check
+#### Error Details
+\`\`\`json
+${JSON.stringify((await github.rest.actions.listWorkflowRunArtifacts({owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId})), null, 2)}
 \`\`\`
 
-**Action Required:**
-1. Check Naver API status
-2. Verify passportKey extraction logic
-3. Test: \`pip install git+https://github.com/${{ github.repository }}.git\`
+#### Reproduction Steps
+1. \`git clone https://github.com/${{ github.repository }}.git\`
+2. \`git checkout ${{ github.sha }}\`
+3. \`pip install -e .\`
+4. \`python -c \"from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())\"\`
+
+#### Action Required ⚠️
+- [ ] Check Naver API status: https://search.naver.com/search.naver?query=네이버+맞춤법+검사기
+- [ ] Verify passportKey extraction logic in \`korector._refresh_passport_key()\`
+- [ ] Test local: \`pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}\`
+
+**Labels:** bug, korector-api, health-check
             `,
-            labels: ['bug', 'korector-api', 'health-check']
+            labels: ['bug', 'korector-api', 'health-check', 'needs-triage']
           })
+          
+          core.info(\`✅ Issue created: https://github.com/${{ github.repository }}/issues/\${issue.data.number}\`)
