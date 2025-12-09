@@ -13,7 +13,7 @@ from typing import Dict, Optional, Callable, Tuple
 from functools import lru_cache
 import concurrent.futures
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "movemin"
 
 
