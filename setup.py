@@ -17,8 +17,6 @@ setup(
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Operating System :: POSIX :: Linux',
-        'Operating System :: MacOS',
-        'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft :: Windows',
         'Operating System :: Microsoft :: Windows :: Windows 10',
         'Operating System :: Microsoft :: Windows :: Windows 11',
