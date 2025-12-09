@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  issues: write  # 🔴 이슈 생성 위해 필요
+  issues: write  # 이슈 생성 위해 필요
 
 jobs:
   health-check:
@@ -27,13 +27,34 @@ jobs:
         pip install --upgrade pip
         pip install build setuptools wheel
 
-    - name: Build package
+    # 🔹 1단계: 기존 빌드물 완전 제거
+    - name: Clean previous builds
+      run: |
+        rm -rf dist/ build/ *.egg-info/ .eggs/ .pytest_cache/
+        pip cache purge
+        echo "🧹 Cleaned previous builds and pip cache"
+
+    # 🔹 2단계: 기존 korector 완전 제거
+    - name: Uninstall existing Korector
+      run: |
+        pip uninstall korector -y || true
+        pip show korector || echo "✅ No existing korector found"
+        echo "🗑️ Removed existing korector (if any)"
+
+    # 🔹 3단계: 새로 빌드
+    - name: Build package (1.0.5)
       run: |
         python -m build
+        echo "🏗️ Built korector $(ls -la dist/ | tail -1 | awk '{print $9 " (" $5 " bytes)"}')"
+        echo "📦 Built packages:"
+        ls -la dist/
 
-    - name: Install Korector (local build)
+    # 🔹 4단계: 클린 설치
+    - name: Clean install Korector (1.0.5)
       run: |
         pip install .
+        pip show korector
+        echo "✅ Installed korector 1.0.5 from local build"
 
     - name: Run Korector health check
       id: health
@@ -43,28 +64,25 @@ jobs:
         import json
         import sys
 
-        print("=== Korector Health Check ===")
-        try:
-            import korector
-            print("Version:", getattr(korector, "__version__", "unknown"))
-        except Exception as e:
-            print("Version: unknown (import error)", e)
+        print("=== Korector Health Check (1.0.5) ===")
+        import korector
+        print(f"Version: {korector.__version__}")
+        print(f"Location: {korector.__file__}")
 
         checker = NaverSpellChecker(verbose=False)
         result = checker.health_check()
 
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
-        # 결과를 GitHub Actions 출력 값으로 전달
-        ok = result.get("status") == "ok"
-        print(f"::set-output name=status::{result.get('status')}")
-        if not ok:
+        if result.get("status") != "ok":
+            print("❌ HEALTH CHECK FAILED!")
             sys.exit(1)
+        print("✅ HEALTH CHECK PASSED!")
         EOF
 
     # 🔹 실패했을 때만 이슈 생성
     - name: Create issue on failure
-      if: failure()  # 위 step 중 하나라도 실패하면 실행
+      if: failure()
       uses: actions/github-script@v7
       with:
         script: |
@@ -74,17 +92,17 @@ jobs:
 
           const title = `🚨 Korector Health Check Failed (${sha.slice(0,7)})`;
           const body =
-            `### 🚨 Korector Health Check Failed\n\n` +
+            `### 🚨 Korector API Health Check Failed\n\n` +
             `**⏰ Time:** ${now}\n` +
             `**🔢 Commit:** ${sha}\n` +
             `**📂 Repository:** ${repoFull}\n\n` +
             `#### Reproduction\n` +
             `\`\`\`bash\n` +
             `git clone https://github.com/${repoFull}.git\n` +
-            `cd ${context.repo.repo}\n` +
             `git checkout ${sha}\n` +
+            `pip uninstall korector -y\n` +
             `pip install -e .\n` +
-            `python -c "from korector import NaverSpellChecker; print(NaverSpellChecker().health_check())"\n` +
+            `python -c "from korector import NaverSpellChecker(verbose=False); print(NaverSpellChecker(verbose=False).health_check())"\n` +
             `\`\`\`\n\n` +
             `#### Action Required\n` +
             `- [ ] Check Naver API status\n` +
