@@ -5,8 +5,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  health-check:
-    runs-on: windows-latest
+  test-all-platforms:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -15,20 +18,33 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        shell: pwsh
+        shell: bash
         run: |
           pip install --upgrade pip setuptools wheel
           pip install .
 
       - name: Health Check
-        shell: pwsh
+        shell: bash
         run: |
-          $result = python -m cli --health-check 2>$null
-          if ($result -match '"status": *"ok"') {
-            Write-Output "PASS ✅"
+          if python -m cli --health-check 2>/dev/null | grep -q '"status": *"ok"'; then
+            echo "PASS ✅ ${{ matrix.os }}"
             exit 0
-          } else {
-            Write-Output "FAIL ❌"
-            Write-Output $result
+          else
+            echo "FAIL ❌ ${{ matrix.os }}"
+            python -m cli --health-check || true
             exit 1
-          }
+          fi
+
+  summary:
+    needs: test-all-platforms
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check overall status
+        run: |
+          if [[ "${{ needs.test-all-platforms.result }}" == "success" ]]; then
+            echo "✅ ALL PLATFORMS PASS"
+          else
+            echo "❌ SOME PLATFORMS FAILED"
+            exit 1
+          fi
