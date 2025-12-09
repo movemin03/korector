@@ -2,7 +2,7 @@ name: Health Check
 on:
   schedule:
     - cron: '0 1 * * *'  # 매일 UTC 01:00 (KST 10:00)
-  workflow_dispatch:  # 수동 실행 가능
+  workflow_dispatch:
 
 jobs:
   health-check:
@@ -19,40 +19,32 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          pip install . --no-build-isolation
 
       - name: Run health check
         id: health
         run: |
-          result=$(korector --health-check)
+          result=$(korector --health-check 2>&1)
           echo "$result"
           
-          # JSON 파싱하여 상태 확인
-          status=$(echo "$result" | jq -r '.status // empty')
-          if [ "$status" = "ok" ]; then
+          echo "$result" > health-check-result.json
+          
+          if echo "$result" | grep -q '"status": *"ok"'; then
             echo "health_status=success" >> $GITHUB_OUTPUT
             echo "Health check passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "health_status=failure" >> $GITHUB_OUTPUT
             echo "Health check failed" >> $GITHUB_STEP_SUMMARY
-            echo "Status: $status" >> $GITHUB_STEP_SUMMARY
+            echo "### Result" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            echo "$result" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
-          
-          # 전체 결과 저장
-          echo "$result" > health-check-result.json
         continue-on-error: true
 
       - name: Upload health check result
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: health-check-result
+          name: health-check-result-${{ github.run_id }}
           path: health-check-result.json
-
-      - name: Notify on failure
-        if: steps.health.outputs.health_status == 'failure'
-        uses: 8398a7/action-slack@v3
-        with:
-          status: failure
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
