@@ -53,7 +53,7 @@ jobs:
             const fs = require('fs');
             const resultRaw = fs.readFileSync('health-check-result.json', 'utf8');
             
-            const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
+            const runUrl = process.env['GITHUB_SERVER_URL'] + '/' + process.env['GITHUB_REPOSITORY'] + '/actions/runs/' + process.env['GITHUB_RUN_ID'];
             const timestamp = new Date().toISOString();
             
             let status = 'unknown';
@@ -64,20 +64,14 @@ jobs:
             }
             
             const issueTitle = '[Health Check] Naver Spell Checker API Status';
-            const issueBody = `## Health Check Result (${timestamp})
-
-**Status**: \`${status}\`
-
-### Details
-\`\`\`json
-${resultRaw.slice(0, 4000)}
-\`\`\`
-
-**실행 URL**: [${{ github.run_id }}](${runUrl})
-
-**Workflow**: ${{ github.workflow }} #${{ github.run_number }}
-**Commit**: [${{ github.sha_short }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})`;
-
+            const issueBody = '## Health Check Result (' + timestamp + ')\n\n' +
+              '**Status**: ' + status + '\n\n' +
+              '### Details\n' +
+              '``````\n\n' +
+              '**실행 URL**: [' + process.env['GITHUB_RUN_ID'] + '](' + runUrl + ')\n\n' +
+              '**Workflow**: ${{ github.workflow }} #${{ github.run_number }}\n' +
+              '**Commit**: [${{ github.sha_short }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})';
+            
             const issues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -124,5 +118,7 @@ ${resultRaw.slice(0, 4000)}
                   labels: labels
                 });
               }
-              core.info(`Health check 이슈 업데이트 (${status})`);
+              core.info('Health check 이슈 업데이트 (' + status + ')');
             }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
