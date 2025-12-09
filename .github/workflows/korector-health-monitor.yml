@@ -209,30 +209,30 @@ jobs:
           const title = `🚨 Korector Health Check Failed: ${Object.keys(results).filter(k => results[k] !== 'success').join(', ')}`;
           const body = `### 🚨 Korector Multi-Platform Test Failed
 
-**⏰ Time:** ${new Date().toISOString()}
+  **⏰ Time:** ${new Date().toISOString()}
 
-**Results:**
-\`\`\`
-${Object.entries(results).map(([p,r]) => `${p.padEnd(8)}: ${r}`).join('\n')}
-\`\`\`
+  **Results:**
+  \`\`\`
+  ${Object.entries(results).map(([p,r]) => `${p.padEnd(8)}: ${r}`).join('\n')}
+  \`\`\`
 
-**🔍 Windows Debug Info:**
-Check **"🔍 Windows Naver Debug (로컬 성공 헤더)"** step for:
-- passportKey 패턴 매치 결과
-- 40자 hex 빈도 분석
-- 네이버 HTML 길이/상태
+  **🔍 Windows Debug Info:**
+  Check **"🔍 Windows Naver Debug (로컬 성공 헤더)"** step for:
+  - passportKey 패턴 매치 결과
+  - 40자 hex 빈도 분석
+  - 네이버 HTML 길이/상태
 
-**Logs:**
-- [Windows](${{ needs.windows-test.result_url }})
-- [Linux](${{ needs.linux-test.result_url }})
-- [macOS](${{ needs.macos-test.result_url }})
+  **Logs:**
+  - [Windows](${{ needs.windows-test.result_url }})
+  - [Linux](${{ needs.linux-test.result_url }})
+  - [macOS](${{ needs.macos-test.result_url }})
 
-**Windows 헤더:** Chrome 143 + Edge (로컬 성공 헤더 정확 복사)`;
+  **Windows 헤더:** Chrome 143 + Edge (로컬 성공 헤더 정확 복사)`;
 
-          await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title,
-            body,
-            labels: ['bug', 'korector-api', 'health-check', 'windows-priority']
-          });
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['bug', 'korector-api', 'health-check', 'windows-priority']
+            });
