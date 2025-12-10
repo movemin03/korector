@@ -1,6 +1,6 @@
 """
-Korector - Modern Korean Spell Checker v1.0.6.1
-Platform-aware UA with ua-parser (no fake-useragent dependency)
+Korector - Modern Korean Spell Checker v1.0.6.3
+Linux-compatible headers with Referer support
 """
 
 import requests
@@ -22,19 +22,18 @@ try:
 except ImportError:
     UA_PARSER_AVAILABLE = False
 
-__version__ = "1.0.6.1"
+__version__ = "1.0.6.3"
 __author__ = "ovin"
 
 # 플랫폼별 최신 User-Agent 풀 (2025년 기준)
 PLATFORM_UA_POOL = {
-    # Linux (GitHub Actions, Ubuntu, CentOS 등)
+    # Linux (GitHub Actions, Ubuntu, CentOS 등) - Firefox 우선
     'linux': [
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0',
         'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     ],
-
     # Windows 10/11
     'windows': [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -42,14 +41,12 @@ PLATFORM_UA_POOL = {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
         'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     ],
-
     # macOS / iOS
     'darwin': [
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.3; rv:123.0) Gecko/20100101 Firefox/123.0',
     ],
-
     # iPhone/iPad
     'iphone': [
         'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
@@ -61,14 +58,14 @@ PLATFORM_UA_POOL = {
     ],
 }
 
+
 class NaverSpellChecker:
-    """Naver Spell Checker API client - Platform-aware UA pool (no external deps)"""
+    """Naver Spell Checker API client - Platform-aware UA pool with Linux support"""
 
     def __init__(self, verbose: bool = False):
         self.base_url = "https://ts-proxy.naver.com/ocontent/util/SpellerProxy"
         self.search_url = "https://search.naver.com/search.naver"
         self.passport_key = None
-
         self.session = requests.Session()
         self.verbose = verbose
         self.logger = logging.getLogger('korector')
@@ -108,34 +105,37 @@ class NaverSpellChecker:
     def _get_platform_user_agent(self) -> str:
         """플랫폼별 User-Agent 로테이션 (무작위성 추가)"""
         uas = PLATFORM_UA_POOL.get(self.platform, PLATFORM_UA_POOL['linux'])
-
         # 인덱스 로테이션으로 동일 UA 반복 방지
         ua = uas[self.current_ua_index % len(uas)]
         self.current_ua_index += 1
-
         return ua
 
     def _update_headers(self):
-        """플랫폼별 동적 브라우저 헤더 (2025 최신)"""
+        """플랫폼별 동적 브라우저 헤더 (Linux 호환)"""
         ua_string = self._get_platform_user_agent()
 
+        # 기본 헤더 (모든 브라우저 공통)
         headers = {
             'User-Agent': ua_string,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
             'Cache-Control': 'max-age=0',
-            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': f'"{self.platform.upper()}"',
         }
+
+        # Chromium 계열에만 Sec-Fetch 헤더 추가
+        if 'Chrome' in ua_string or 'Chromium' in ua_string:
+            headers.update({
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="121"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': f'"{self.platform}"',
+            })
 
         self.session.headers.update(headers)
 
@@ -155,8 +155,18 @@ class NaverSpellChecker:
         try:
             self._update_headers()  # 매번 헤더 새로고침
 
+            # Referer 헤더 추가 (필수!)
+            referer_headers = {
+                'Referer': 'https://www.naver.com/'
+            }
+
             params = {'where': 'nexearch', 'query': '네이버 맞춤법 검사기'}
-            response = self.session.get(self.search_url, params=params, timeout=15)
+            response = self.session.get(
+                self.search_url,
+                params=params,
+                headers=referer_headers,
+                timeout=15
+            )
 
             if response.status_code != 200:
                 if self.verbose:
@@ -175,6 +185,7 @@ class NaverSpellChecker:
                         self.logger.info("✅ passportKey (pattern)")
                     return True
 
+            # Fallback: 빈도수 기반 추출
             all_hex = re.findall(r'\b([a-f0-9]{40})\b', html_text)
             if all_hex:
                 key = Counter(all_hex).most_common(1)[0][0]
@@ -277,14 +288,18 @@ class NaverSpellChecker:
             'passportKey': self.passport_key, '_callback': callback, 'q': text,
             'where': 'nexearch', 'color_blindness': '0', '_': timestamp
         }
-        headers = {'Referer': 'https://search.naver.com/', 'Accept': '*/*'}
+
+        headers = {
+            'Referer': 'https://search.naver.com/',
+            'Accept': '*/*'
+        }
 
         try:
             response = self.session.get(self.base_url, params=params, headers=headers, timeout=10)
 
             if response.status_code in [401, 403] and retry:
                 if self._refresh_passport_key():
-                    time.sleep(0.3)
+                    time.sleep(0.5)  # Linux에서 안정성 향상
                     return self._check_single(text, retry=False)
 
             if response.status_code != 200:
@@ -297,7 +312,7 @@ class NaverSpellChecker:
             json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
             if not json_match:
                 if retry and self._refresh_passport_key():
-                    time.sleep(0.3)
+                    time.sleep(0.5)
                     return self._check_single(text, retry=False)
                 return {
                     'success': False, 'original': text, 'corrected': text,
@@ -307,7 +322,6 @@ class NaverSpellChecker:
 
             data = json.loads(json_match.group())
             result = data.get('message', {}).get('result', {})
-
             corrected = result.get('notag_html', text)
             has_error = (text != corrected)
 
@@ -342,10 +356,13 @@ class NaverSpellChecker:
         def process_chunk(item: Tuple[int, str]) -> Tuple[int, dict]:
             index, chunk = item
             result = self._check_single(chunk)
+
             if self.verbose or progress_callback:
                 self.logger.info(f"청크 {index + 1}/{total_chunks} 완료 ({result['time']:.2f}초)")
-                if progress_callback:
-                    progress_callback(index + 1, total_chunks)
+
+            if progress_callback:
+                progress_callback(index + 1, total_chunks)
+
             return (index, result)
 
         results = []
@@ -409,9 +426,10 @@ class NaverSpellChecker:
                             'time': result['time']
                         }
                     }
+
             if self.verbose:
                 self.logger.info(f"헬스체크 재시도 {attempt+1}/{max_retries} (Platform: {self.platform})")
-            time.sleep(1)
+            time.sleep(2)  # Linux 안정성을 위해 대기 시간 증가
 
         return {
             'status': 'error',
