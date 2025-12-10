@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='korector',
-    version='1.0.6.3',
+    version='1.0.6.4',
     author='ovin',
     description='Korean spell checker using Naver API (Linux/macOS/Windows)',
     long_description=open('README.md', encoding='utf-8').read(),
