@@ -30,20 +30,16 @@ jobs:
         run: |
           echo "🔍 Testing on ${{ matrix.os }}..."
           
-          # Health check 실행 및 결과 저장
-          output=$(python -m cli --health-check 2>&1)
-          exit_code=$?
-          
-          echo "$output"
-          echo "Exit code: $exit_code"
+          # Health check 실행 및 파일로 저장 (화면에도 출력)
+          python -m cli --health-check 2>&1 | tee health-check.log
           
           # status가 "ok"인지 확인
-          if echo "$output" | grep -q '"status": *"ok"'; then
-            echo "PASS - ${{ matrix.os }}"
+          if grep -q '"status": *"ok"' health-check.log; then
+            echo "✅ PASS - ${{ matrix.os }}"
             echo "result=pass" >> $GITHUB_OUTPUT
             exit 0
           else
-            echo "FAIL - ${{ matrix.os }}"
+            echo "❌ FAIL - ${{ matrix.os }}"
             echo "result=fail" >> $GITHUB_OUTPUT
             exit 1
           fi
@@ -53,8 +49,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: health-check-fail-${{ matrix.os }}
-          path: |
-            *.log
+          path: health-check.log
+          if-no-files-found: warn
           retention-days: 7
 
   summary:
@@ -67,14 +63,12 @@ jobs:
           echo "=== Health Check Results ==="
           echo ""
           
-          ubuntu_result="${{ needs.test-platforms.result }}"
-          
           # Matrix job 결과 확인
           if [[ "${{ needs.test-platforms.result }}" == "success" ]]; then
-            echo "ALL PLATFORMS PASSED"
+            echo "🎉 ALL PLATFORMS PASSED"
             exit 0
           else
-            echo "SOME PLATFORMS FAILED"
+            echo "⚠️  SOME PLATFORMS FAILED"
             echo ""
             echo "Details:"
             echo "  - Job result: ${{ needs.test-platforms.result }}"
