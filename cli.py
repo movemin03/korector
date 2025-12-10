@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Korector CLI - Command Line Interface v1.0.6.1
+Korector CLI - Command Line Interface v1.0.6.3
 No external dependencies - Pure Python
 """
 
